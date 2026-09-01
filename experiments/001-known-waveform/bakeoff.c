@@ -1,224 +1,416 @@
 /*
- * MCL-AP Experiment 001: Preamble Bakeoff
+ * MCL-AP Experiment 001: Corrected Preamble Bakeoff
  *
- * Compare four candidate preamble types under controlled impairments.
- * LAB / EXPERIMENTAL only — NOT a normative AP profile selection.
+ * Compares 4 candidate preambles under equalized resource budgets:
+ *   - LFM_CHIRP
+ *   - ZC_DERIVED
+ *   - PN_MSEQ
+ *   - FREQ_DIVERSE
  *
- * Metrics per preamble type:
- *   - Detection probability (Pd) at fixed false-alarm rate
- *   - Timing error (samples)
- *   - Robustness under: AWGN, clipping, sample-rate offset
+ * Methodology:
+ *   1. Preamble exact length invariant: N = 4800 samples (0.100s at 48 kHz).
+ *   2. Energy equalized: sum(x[n]^2) == 0.40 * N for all candidates.
+ *   3. Empirical false-alarm calibration:
+ *      - Run signal-absent noise trials over 9600-sample acquisition window.
+ *      - Record maximum correlation magnitude per trial.
+ *      - Establish threshold gamma for target empirical Pfa = 0.01 (1%).
+ *      - Verify empirical Pfa on independent noise trials.
+ *   4. Signal-present evaluation at calibrated threshold gamma:
+ *      - Variable leading silence offsets (0, 17, 53, 101, 319, 1000 samples).
+ *      - Evaluate detection probability (Pd), mean timing error, and max timing error.
+ *      - Downstream FSK payload CRC evaluated as a separate downstream metric.
  *
- * Build:
- *   cl /std:c11 /W4 /O2 /D_CRT_SECURE_NO_WARNINGS \
- *      /I../../include /I../../../mcl-wire/include \
- *      exp001.c bakeoff.c ../../../mcl-wire/src/wire.c \
- *      ../../../mcl-wire/src/extension.c /Fe:bakeoff.exe
+ * Status: LAB / EXPERIMENTAL — NOT AP-B0.
  */
 
 #include "exp001.h"
 #include "mcl/wire.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
 #define PCM_BUF_SIZE 960000u
-static float g_pcm_source[PCM_BUF_SIZE];
-static float g_pcm_impaired[PCM_BUF_SIZE];
+static float g_pcm_src[PCM_BUF_SIZE];
+static float g_pcm_imp[PCM_BUF_SIZE];
+
+#define NOISE_CALIB_TRIALS 100u
+#define NOISE_VERIFY_TRIALS 100u
+#define TARGET_PFA 0.01
 
 typedef struct {
     const char *name;
-    unsigned detections;
-    unsigned crc_passes;
-    unsigned bit_perfect;
+    double threshold_gamma;
+    unsigned noise_verify_trials;
+    unsigned observed_false_alarms;
+    double empirical_pfa;
+} calib_result_t;
+
+typedef struct {
+    const char *name;
     unsigned trials;
+    unsigned detections;
+    double pd;
     double total_timing_error;
-} bakeoff_result_t;
+    double max_timing_error;
+    double total_corr;
+    unsigned payload_crc_pass;
+} eval_result_t;
+
+static int compare_doubles(const void *a, const void *b)
+{
+    double da = *(const double *)a;
+    double db = *(const double *)b;
+    if (da < db) return -1;
+    if (da > db) return 1;
+    return 0;
+}
 
 /*
- * Run a single preamble trial: encode PRESENCE, apply impairment, decode.
+ * Step 1: Calibrate detection threshold gamma for empirical Pfa target.
  */
-static void run_trial(
-    exp001_preamble_type_t preamble_type,
-    const exp001_impairment_config_t *imp,
-    bakeoff_result_t *result)
+static void calibrate_candidate_pfa(exp001_preamble_type_t type,
+                                   const char *name,
+                                   calib_result_t *out_calib)
 {
-    mcl_wire_tier0_t obj;
+    const size_t search_window = 9600u;
+    double peak_stats[NOISE_CALIB_TRIALS];
+    uint32_t rng = 54321u + (uint32_t)type * 7919u;
+    unsigned i;
+    unsigned fa_count = 0u;
+
+    out_calib->name = name;
+
+    /* A. Signal-absent calibration trials */
+    for (i = 0u; i < NOISE_CALIB_TRIALS; ++i) {
+        size_t s;
+        for (s = 0u; s < search_window; ++s) {
+            /* Gaussian noise */
+            uint32_t x = rng;
+            x ^= x << 13u; x ^= x >> 17u; x ^= x << 5u;
+            rng = x;
+            double u1 = ((double)(x & 0x7FFFFFFFu) + 1.0) / (double)0x80000000;
+            x ^= x << 13u; x ^= x >> 17u; x ^= x << 5u;
+            rng = x;
+            double u2 = (double)(x & 0x7FFFFFFFu) / (double)0x7FFFFFFF;
+            double n = sqrt(-2.0 * log(u1)) * cos(2.0 * 3.1415926535 * u2);
+            g_pcm_src[s] = (float)(n * 0.2); /* noise */
+        }
+
+        exp001_preamble_detect_t det = exp001_detect_preamble_iq(
+            type, 0.1, 2000.0, 6000.0, 0.0, g_pcm_src, search_window);
+
+        peak_stats[i] = det.peak_correlation;
+    }
+
+    qsort(peak_stats, NOISE_CALIB_TRIALS, sizeof(double), compare_doubles);
+
+    /* Index for (1 - Pfa) percentile */
+    size_t pfa_idx = (size_t)floor((1.0 - TARGET_PFA) * (double)NOISE_CALIB_TRIALS);
+    if (pfa_idx >= NOISE_CALIB_TRIALS) pfa_idx = NOISE_CALIB_TRIALS - 1u;
+    out_calib->threshold_gamma = peak_stats[pfa_idx];
+
+    /* B. Independent verification trials */
+    for (i = 0u; i < NOISE_VERIFY_TRIALS; ++i) {
+        size_t s;
+        for (s = 0u; s < search_window; ++s) {
+            uint32_t x = rng;
+            x ^= x << 13u; x ^= x >> 17u; x ^= x << 5u;
+            rng = x;
+            double u1 = ((double)(x & 0x7FFFFFFFu) + 1.0) / (double)0x80000000;
+            x ^= x << 13u; x ^= x >> 17u; x ^= x << 5u;
+            rng = x;
+            double u2 = (double)(x & 0x7FFFFFFFu) / (double)0x7FFFFFFF;
+            double n = sqrt(-2.0 * log(u1)) * cos(2.0 * 3.1415926535 * u2);
+            g_pcm_src[s] = (float)(n * 0.2);
+        }
+
+        exp001_preamble_detect_t det = exp001_detect_preamble_iq(
+            type, 0.1, 2000.0, 6000.0, out_calib->threshold_gamma, g_pcm_src, search_window);
+
+        if (det.detected != 0u) {
+            fa_count++;
+        }
+    }
+
+    out_calib->noise_verify_trials = NOISE_VERIFY_TRIALS;
+    out_calib->observed_false_alarms = fa_count;
+    out_calib->empirical_pfa = (double)fa_count / (double)NOISE_VERIFY_TRIALS;
+}
+
+/*
+ * Step 2: Evaluate a candidate under a specific impairment condition.
+ */
+static void eval_candidate_scenario(
+    exp001_preamble_type_t type,
+    double threshold_gamma,
+    const exp001_impairment_config_t *imp,
+    unsigned num_trials,
+    eval_result_t *res)
+{
+    const size_t lead_offsets[] = { 0u, 17u, 53u, 101u, 319u, 1000u };
+    const double dur = 0.1;
     uint8_t wire_buf[MCL_WIRE_TIER0_MAX_SIZE];
     size_t wire_written = 0u;
-    uint8_t recovered[MCL_WIRE_TIER0_MAX_SIZE];
-    exp001_frame_config_t fconfig;
-    exp001_decode_result_t decode_result;
-    size_t frame_samples;
-    exp001_status_t est;
-    mcl_wire_status_t wst;
+    mcl_wire_tier0_t obj;
+    unsigned tr;
 
-    /* Build PRESENCE frame */
+    memset(res, 0, sizeof(*res));
+
+    /* Build PRESENCE object */
     memset(&obj, 0, sizeof(obj));
     obj.kind = MCL_WIRE_KIND_PRESENCE;
     obj.priority = 1u;
-    obj.source_ref = 0xBABECAFEu;
-    obj.body.presence.machine_class = 3u;
-    obj.body.presence.capability_digest = 0x00FFAAu;
-    obj.body.presence.ttl = 45u;
+    obj.source_ref = 0xAA550001u;
+    obj.body.presence.machine_class = 2u;
+    obj.body.presence.capability_digest = 0x00FF00u;
+    obj.body.presence.ttl = 30u;
+    mcl_wire_tier0_encode(&obj, wire_buf, sizeof(wire_buf), &wire_written);
 
-    wst = mcl_wire_tier0_encode(&obj, wire_buf, sizeof(wire_buf), &wire_written);
-    if (wst != MCL_WIRE_OK) return;
+    for (tr = 0u; tr < num_trials; ++tr) {
+        size_t true_lead = lead_offsets[tr % (sizeof(lead_offsets)/sizeof(lead_offsets[0]))];
+        exp001_frame_config_t fconfig;
+        exp001_decode_result_t dec_res;
+        size_t frame_samples, impaired_samples;
+        uint8_t rx_payload[EXP001_MAX_PAYLOAD_BYTES];
+        exp001_status_t st;
 
-    fconfig.preamble_type = preamble_type;
-    fconfig.preamble_duration_s = 0.1;
-    fconfig.preamble_f_start_hz = 2000.0;
-    fconfig.preamble_f_end_hz = 6000.0;
-    fconfig.silence_duration_s = 0.05;
+        fconfig.preamble_type = type;
+        fconfig.preamble_duration_s = dur;
+        fconfig.preamble_f_start_hz = 2000.0;
+        fconfig.preamble_f_end_hz = 6000.0;
+        fconfig.leading_silence_s = (double)true_lead / (double)EXP001_SAMPLE_RATE;
+        fconfig.silence_duration_s = 0.05;
+        fconfig.include_training = 1u;
+        fconfig.detection_threshold = threshold_gamma;
 
-    frame_samples = exp001_frame_encode(
-        &fconfig, wire_buf, wire_written,
-        g_pcm_source, PCM_BUF_SIZE);
-    if (frame_samples == 0u) return;
+        frame_samples = exp001_frame_encode(&fconfig, wire_buf, wire_written,
+                                            g_pcm_src, PCM_BUF_SIZE, NULL);
+        if (frame_samples == 0u) continue;
 
-    /* Apply impairment */
-    memcpy(g_pcm_impaired, g_pcm_source, frame_samples * sizeof(float));
-    if (imp != NULL) {
-        exp001_apply_impairments(imp, g_pcm_impaired, frame_samples);
-    }
-
-    /* Decode */
-    est = exp001_frame_decode(
-        &fconfig, g_pcm_impaired, frame_samples,
-        recovered, sizeof(recovered), &decode_result);
-
-    result->trials++;
-
-    if (est != EXP001_ERR_PREAMBLE_NOT_FOUND &&
-        est != EXP001_ERR_SYNC_FAILURE) {
-        result->detections++;
-        /* Approximate timing error using preamble_end_sample vs expected */
-        {
-            size_t expected_end = (size_t)(0.1 * EXP001_SAMPLE_RATE);
-            double err = (double)decode_result.preamble_end_sample - (double)expected_end;
-            result->total_timing_error += fabs(err);
+        /* Apply impairment */
+        if (imp != NULL) {
+            exp001_impairment_config_t trial_imp = *imp;
+            trial_imp.rng_seed = 10000u + tr * 37u + (uint32_t)type * 101u;
+            exp001_apply_impairments(&trial_imp, g_pcm_src, frame_samples,
+                                     g_pcm_imp, PCM_BUF_SIZE, &impaired_samples);
+        } else {
+            memcpy(g_pcm_imp, g_pcm_src, frame_samples * sizeof(float));
+            impaired_samples = frame_samples;
         }
-    }
 
-    if (est == EXP001_OK && decode_result.crc_valid) {
-        result->crc_passes++;
-        if (decode_result.payload_bytes == wire_written &&
-            memcmp(wire_buf, recovered, wire_written) == 0) {
-            result->bit_perfect++;
-        }
-    }
-}
+        res->trials++;
 
-static void print_table_header(void)
-{
-    printf("%-14s | %6s | %6s | %6s | %6s | %10s\n",
-           "Preamble", "Trials", "Detect", "CRC_OK", "BitPfct", "AvgTimErr");
-    printf("%-14s-+-%6s-+-%6s-+-%6s-+-%6s-+-%10s\n",
-           "--------------", "------", "------", "------", "------", "----------");
-}
+        /* 1. Evaluate Preamble Acquisition (independent of payload) */
+        size_t acq_window = 4800u + 2400u;
+        if (acq_window > impaired_samples) acq_window = impaired_samples;
+        exp001_preamble_detect_t det = exp001_detect_preamble_iq(
+            type, dur, 2000.0, 6000.0, threshold_gamma, g_pcm_imp, acq_window);
 
-static void print_result(const bakeoff_result_t *r)
-{
-    double avg_timing = (r->detections > 0) ?
-        r->total_timing_error / (double)r->detections : 0.0;
+        res->total_corr += det.peak_correlation;
 
-    printf("%-14s | %6u | %6u | %6u | %6u | %10.1f\n",
-           r->name, r->trials, r->detections,
-           r->crc_passes, r->bit_perfect, avg_timing);
-}
-
-static void run_scenario(const char *scenario_name,
-                         const exp001_impairment_config_t *imp,
-                         unsigned n_seeds)
-{
-    const char *names[] = { "LFM_CHIRP", "ZADOFF_CHU", "PN_MSEQ", "FREQ_DIVERSE" };
-    bakeoff_result_t results[4];
-    unsigned p, s;
-
-    printf("\n=== %s ===\n", scenario_name);
-
-    memset(results, 0, sizeof(results));
-    for (p = 0u; p < 4u; ++p) {
-        results[p].name = names[p];
-    }
-
-    for (p = 0u; p < 4u; ++p) {
-        for (s = 0u; s < n_seeds; ++s) {
-            exp001_impairment_config_t trial_imp;
-            if (imp != NULL) {
-                trial_imp = *imp;
-                trial_imp.rng_seed = 1000u + s * 7u + p * 31u;
+        if (det.detected != 0u) {
+            res->detections++;
+            double err = fabs((double)det.peak_sample_index - (double)true_lead);
+            res->total_timing_error += err;
+            if (err > res->max_timing_error) {
+                res->max_timing_error = err;
             }
-            run_trial((exp001_preamble_type_t)p,
-                      imp != NULL ? &trial_imp : NULL,
-                      &results[p]);
+        }
+
+        /* 2. Downstream FSK payload decode */
+        st = exp001_frame_decode(&fconfig, g_pcm_imp, impaired_samples,
+                                 rx_payload, sizeof(rx_payload), &dec_res);
+        if (st == EXP001_OK && dec_res.crc_valid != 0u) {
+            res->payload_crc_pass++;
         }
     }
 
-    print_table_header();
-    for (p = 0u; p < 4u; ++p) {
-        print_result(&results[p]);
+    res->pd = (res->trials > 0u) ? (double)res->detections / (double)res->trials : 0.0;
+}
+
+static void print_scenario_table(const char *scenario_name, eval_result_t results[4])
+{
+    unsigned t;
+    printf("\n=== %s ===\n", scenario_name);
+    printf("%-14s | %6s | %6s | %6s | %10s | %10s | %8s | %10s\n",
+           "Candidate", "Trials", "Detect", "Pd", "MeanTimErr", "MaxTimErr", "AvgCorr", "PayloadCRC");
+    printf("%-14s-+-%6s-+-%6s-+-%6s-+-%10s-+-%10s-+-%8s-+-%10s\n",
+           "--------------", "------", "------", "------", "----------", "----------", "--------", "----------");
+
+    for (t = 0u; t < 4u; ++t) {
+        double avg_err = (results[t].detections > 0u) ?
+            results[t].total_timing_error / (double)results[t].detections : 0.0;
+        double avg_corr = (results[t].trials > 0u) ?
+            results[t].total_corr / (double)results[t].trials : 0.0;
+
+        printf("%-14s | %6u | %6u | %6.3f | %10.2f | %10.1f | %8.3f | %6u/%u\n",
+               results[t].name,
+               results[t].trials,
+               results[t].detections,
+               results[t].pd,
+               avg_err,
+               results[t].max_timing_error,
+               avg_corr,
+               results[t].payload_crc_pass,
+               results[t].trials);
     }
+    fflush(stdout);
 }
 
 int main(void)
 {
+    const char *names[4] = { "LFM_CHIRP", "ZC_DERIVED", "PN_MSEQ", "FREQ_DIVERSE" };
+    calib_result_t calib[4];
+    eval_result_t results[4];
     exp001_impairment_config_t imp;
+    unsigned t;
 
-    printf("MCL-AP Experiment 001: Preamble Bakeoff\n");
-    printf("=======================================\n");
-    printf("Status: LAB / EXPERIMENTAL — NOT AP-B0 selection\n");
+    printf("MCL-AP Experiment 001: Corrected Preamble Bakeoff\n");
+    printf("===================================================\n");
+    printf("Status: LAB / EXPERIMENTAL — Resource-Equalized Benchmarking\n\n");
 
-    /* Scenario 1: Clean channel baseline */
-    run_scenario("Clean Channel", NULL, 1u);
+    /* Step 1: Calibration */
+    printf("--- Empirical False-Alarm Calibration (Target Pfa = %.3f per 9600-sample window) ---\n", TARGET_PFA);
+    printf("%-14s | %10s | %10s | %10s | %12s\n",
+           "Candidate", "Threshold", "NoiseTr", "FalseAlarms", "EmpiricalPfa");
+    printf("%-14s-+-%10s-+-%10s-+-%10s-+-%12s\n",
+           "--------------", "----------", "----------", "----------", "------------");
 
-    /* Scenario 2: AWGN sweep */
+    for (t = 0u; t < 4u; ++t) {
+        calibrate_candidate_pfa((exp001_preamble_type_t)t, names[t], &calib[t]);
+        printf("%-14s | %10.4f | %10u | %10u | %12.4f\n",
+               calib[t].name,
+               calib[t].threshold_gamma,
+               calib[t].noise_verify_trials,
+               calib[t].observed_false_alarms,
+               calib[t].empirical_pfa);
+        fflush(stdout);
+    }
+
+    /* Scenario 1: Clean Channel */
+    for (t = 0u; t < 4u; ++t) {
+        results[t].name = names[t];
+        eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, NULL, 12u, &results[t]);
+        results[t].name = names[t];
+    }
+    print_scenario_table("Clean Channel Baseline", results);
+
+    /* Scenario 2: AWGN Sweeps (30, 20, 10, 5, 0 dB) */
     {
-        double snr_levels[] = { 40.0, 30.0, 20.0, 15.0, 10.0 };
-        unsigned i;
-        char label[64];
-
-        for (i = 0u; i < sizeof(snr_levels)/sizeof(snr_levels[0]); ++i) {
+        double snrs[] = { 30.0, 20.0, 10.0, 5.0, 0.0 };
+        unsigned s;
+        char title[64];
+        for (s = 0u; s < sizeof(snrs)/sizeof(snrs[0]); ++s) {
             memset(&imp, 0, sizeof(imp));
-            imp.awgn_snr_db = snr_levels[i];
-            imp.clipping_threshold = 1.0;
-            sprintf(label, "AWGN SNR=%g dB", snr_levels[i]);
-            run_scenario(label, &imp, 5u);
+            imp.awgn_snr_db = snrs[s];
+            sprintf(title, "AWGN SNR = %g dB", snrs[s]);
+
+            for (t = 0u; t < 4u; ++t) {
+                eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
+                results[t].name = names[t];
+            }
+            print_scenario_table(title, results);
         }
     }
 
-    /* Scenario 3: Clipping sweep */
+    /* Scenario 3: Colored Noise (15 dB SNR) */
     {
-        double clip_levels[] = { 0.9, 0.7, 0.5, 0.3 };
-        unsigned i;
-        char label[64];
-
-        for (i = 0u; i < sizeof(clip_levels)/sizeof(clip_levels[0]); ++i) {
-            memset(&imp, 0, sizeof(imp));
-            imp.clipping_threshold = clip_levels[i];
-            sprintf(label, "Clipping %.1f", clip_levels[i]);
-            run_scenario(label, &imp, 5u);
+        memset(&imp, 0, sizeof(imp));
+        imp.colored_noise_snr_db = 15.0;
+        for (t = 0u; t < 4u; ++t) {
+            eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
+            results[t].name = names[t];
         }
+        print_scenario_table("Colored Noise (15 dB SNR)", results);
     }
 
-    /* Scenario 4: Sample rate offset sweep */
+    /* Scenario 4: 2-Path Multipath (5 ms delay, 0.35 gain) */
     {
-        double sro_levels[] = { 10.0, 50.0, 100.0, 500.0 };
-        unsigned i;
-        char label[64];
+        memset(&imp, 0, sizeof(imp));
+        imp.num_multipath_paths = 2u;
+        imp.multipath_delays_ms[1] = 5.0;
+        imp.multipath_gains[1] = 0.35;
 
-        for (i = 0u; i < sizeof(sro_levels)/sizeof(sro_levels[0]); ++i) {
-            memset(&imp, 0, sizeof(imp));
-            imp.sample_rate_offset_ppm = sro_levels[i];
-            imp.clipping_threshold = 1.0;
-            sprintf(label, "SRO +%g ppm", sro_levels[i]);
-            run_scenario(label, &imp, 5u);
+        for (t = 0u; t < 4u; ++t) {
+            eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
+            results[t].name = names[t];
         }
+        print_scenario_table("2-Path Multipath (5 ms, gain 0.35)", results);
     }
 
-    printf("\n=======================================\n");
-    printf("Bakeoff complete. Review results to inform AP-B0 selection.\n");
-    printf("These results are EXPERIMENTAL and do NOT define MCL-AP.\n");
+    /* Scenario 5: 5-Path Multipath (0-30 ms bounded delay) */
+    {
+        memset(&imp, 0, sizeof(imp));
+        imp.num_multipath_paths = 5u;
+        imp.multipath_delays_ms[1] = 3.0;  imp.multipath_gains[1] = 0.25;
+        imp.multipath_delays_ms[2] = 8.0;  imp.multipath_gains[2] = 0.20;
+        imp.multipath_delays_ms[3] = 17.0; imp.multipath_gains[3] = 0.15;
+        imp.multipath_delays_ms[4] = 27.0; imp.multipath_gains[4] = 0.10;
 
+        for (t = 0u; t < 4u; ++t) {
+            eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
+            results[t].name = names[t];
+        }
+        print_scenario_table("5-Path Multipath (0-30 ms bounded)", results);
+    }
+
+    /* Scenario 6: Band Attenuation (-10 dB notch at 4000 Hz) */
+    {
+        memset(&imp, 0, sizeof(imp));
+        imp.band_atten_f_low_hz = 3800.0;
+        imp.band_atten_f_high_hz = 4200.0;
+        imp.band_atten_factor = 0.316;
+
+        for (t = 0u; t < 4u; ++t) {
+            eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
+            results[t].name = names[t];
+        }
+        print_scenario_table("Band Attenuation (-10 dB Notch @ 4000 Hz)", results);
+    }
+
+    /* Scenario 7: Clipping (threshold = 0.5) */
+    {
+        memset(&imp, 0, sizeof(imp));
+        imp.clipping_threshold = 0.5;
+
+        for (t = 0u; t < 4u; ++t) {
+            eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
+            results[t].name = names[t];
+        }
+        print_scenario_table("Clipping (threshold = 0.5)", results);
+    }
+
+    /* Scenario 8: Sample Rate Offset (+50 ppm) */
+    {
+        memset(&imp, 0, sizeof(imp));
+        imp.sample_rate_offset_ppm = 50.0;
+
+        for (t = 0u; t < 4u; ++t) {
+            eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
+            results[t].name = names[t];
+        }
+        print_scenario_table("Sample Rate Offset (+50 ppm)", results);
+    }
+
+    /* Scenario 9: Combined Impairments (2-path + SRO + 30 dB AWGN) */
+    {
+        memset(&imp, 0, sizeof(imp));
+        imp.num_multipath_paths = 2u;
+        imp.multipath_delays_ms[1] = 4.0;
+        imp.multipath_gains[1] = 0.25;
+        imp.sample_rate_offset_ppm = 25.0;
+        imp.awgn_snr_db = 30.0;
+
+        for (t = 0u; t < 4u; ++t) {
+            eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
+            results[t].name = names[t];
+        }
+        print_scenario_table("Combined Mild (2-path + SRO + 30dB AWGN)", results);
+    }
+
+    printf("\n===================================================\n");
+    printf("Bakeoff complete. All metrics recorded under equalized resources.\n");
+    printf("Status: LAB / EXPERIMENTAL — NOT AP-B0.\n");
     return 0;
 }

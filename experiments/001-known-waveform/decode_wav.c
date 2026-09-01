@@ -81,7 +81,10 @@ int main(int argc, char **argv)
     fconfig.preamble_duration_s = 0.2;  /* Match E3 source WAV */
     fconfig.preamble_f_start_hz = 2000.0;
     fconfig.preamble_f_end_hz = 6000.0;
+    fconfig.leading_silence_s = 0.1;
     fconfig.silence_duration_s = 0.5;
+    fconfig.include_training = 1u;
+    fconfig.detection_threshold = 0.40;
 
     printf("\nAcquiring preamble & decoding frame...\n");
     est = exp001_frame_decode(&fconfig, g_samples, num_samples,
