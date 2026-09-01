@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 project(mcl_ap LANGUAGES C)
 
 option(MCL_AP_BUILD_TESTS "Build host-side reference tests" ON)
+option(MCL_AP_BUILD_EXPERIMENTS "Build experimental physical-layer testbeds" ON)
+
+set(MCL_WIRE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-wire" CACHE PATH "Path to mcl-wire repository")
 
 add_library(mcl_ap_channel STATIC
     src/ap_channel.c)
@@ -29,4 +32,52 @@ if(MCL_AP_BUILD_TESTS)
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
     add_test(NAME mcl_ap_standalone_header COMMAND mcl_ap_test_standalone_header)
+endif()
+
+if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
+    # Sibling wire dependency for experimental waveform harness
+    add_library(mcl_ap_exp_wire_dep STATIC
+        ${MCL_WIRE_DIR}/src/wire.c
+        ${MCL_WIRE_DIR}/src/extension.c)
+    target_include_directories(mcl_ap_exp_wire_dep PUBLIC ${MCL_WIRE_DIR}/include)
+    set_target_properties(mcl_ap_exp_wire_dep PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
+    add_library(mcl_ap_exp001 STATIC
+        experiments/001-known-waveform/exp001.c)
+    target_include_directories(mcl_ap_exp001 PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/experiments/001-known-waveform
+        ${MCL_WIRE_DIR}/include)
+    target_link_libraries(mcl_ap_exp001 PUBLIC mcl_ap_exp_wire_dep)
+    set_target_properties(mcl_ap_exp001 PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
+    add_executable(mcl_ap_exp001_test
+        experiments/001-known-waveform/test_exp001.c)
+    target_link_libraries(mcl_ap_exp001_test PRIVATE mcl_ap_exp001)
+    set_target_properties(mcl_ap_exp001_test PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
+    add_executable(mcl_ap_exp001_bakeoff
+        experiments/001-known-waveform/bakeoff.c)
+    target_link_libraries(mcl_ap_exp001_bakeoff PRIVATE mcl_ap_exp001)
+    set_target_properties(mcl_ap_exp001_bakeoff PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
+    add_executable(mcl_ap_exp001_decode_wav
+        experiments/001-known-waveform/decode_wav.c)
+    target_link_libraries(mcl_ap_exp001_decode_wav PRIVATE mcl_ap_exp001)
+    set_target_properties(mcl_ap_exp001_decode_wav PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
 endif()
