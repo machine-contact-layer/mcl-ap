@@ -1,6 +1,8 @@
 #ifndef MCL_AP_CHANNEL_H
 #define MCL_AP_CHANNEL_H
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

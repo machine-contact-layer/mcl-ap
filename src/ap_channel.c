@@ -16,13 +16,16 @@ double mcl_ap_iso_sound_speed_mps(double temperature_c)
 double mcl_ap_one_way_delay_s(double distance_m, double temperature_c)
 {
     if (distance_m < 0.0) {
-        return 0.0;
+        return -1.0;
     }
     return distance_m / mcl_ap_speed_of_sound_mps(temperature_c);
 }
 
 double mcl_ap_round_trip_delay_s(double distance_m, double temperature_c)
 {
+    if (distance_m < 0.0) {
+        return -1.0;
+    }
     return 2.0 * mcl_ap_one_way_delay_s(distance_m, temperature_c);
 }
 
@@ -50,9 +53,15 @@ double mcl_ap_serialization_time_s(size_t payload_bytes, double net_bitrate_bps)
 
 double mcl_ap_bitrate_equal_to_propagation_bps(size_t payload_bytes, double distance_m, double temperature_c)
 {
+    if (distance_m < 0.0) {
+        return -1.0;
+    }
+    if (distance_m == 0.0) {
+        return HUGE_VAL;
+    }
     const double delay = mcl_ap_one_way_delay_s(distance_m, temperature_c);
     if (delay <= 0.0) {
-        return 0.0;
+        return HUGE_VAL;
     }
     return ((double)payload_bytes * 8.0) / delay;
 }

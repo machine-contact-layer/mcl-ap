@@ -101,11 +101,31 @@ static void test_spreading_and_doppler(void)
     }
 }
 
+static void test_boundary_conditions(void)
+{
+    /* distance = 0 */
+    CHECK_NEAR(mcl_ap_one_way_delay_s(0.0, 20.0), 0.0, 1e-9);
+    CHECK_TRUE(mcl_ap_bitrate_equal_to_propagation_bps(32u, 0.0, 20.0) == HUGE_VAL);
+
+    /* distance < 0 (invalid input, distinct from zero) */
+    CHECK_TRUE(mcl_ap_one_way_delay_s(-5.0, 20.0) < 0.0);
+    CHECK_TRUE(mcl_ap_round_trip_delay_s(-5.0, 20.0) < 0.0);
+    CHECK_TRUE(mcl_ap_bitrate_equal_to_propagation_bps(32u, -5.0, 20.0) < 0.0);
+
+    /* distance = 1 */
+    CHECK_NEAR(mcl_ap_one_way_delay_s(1.0, 20.0), 1.0 / 343.42, 1e-6);
+
+    /* payload = 0 */
+    CHECK_NEAR(mcl_ap_serialization_time_s(0u, 1000.0), 0.0, 1e-9);
+    CHECK_NEAR(mcl_ap_bitrate_equal_to_propagation_bps(0u, 10.0, 20.0), 0.0, 1e-9);
+}
+
 int main(void)
 {
     test_propagation_delays_and_bitrate();
     test_iso_atmospheric_absorption();
     test_spreading_and_doppler();
+    test_boundary_conditions();
 
     puts("mcl_ap channel analytical calculations: ALL PASS");
     return 0;

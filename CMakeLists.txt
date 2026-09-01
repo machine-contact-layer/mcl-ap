@@ -21,4 +21,12 @@ if(MCL_AP_BUILD_TESTS)
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
     add_test(NAME mcl_ap_test COMMAND mcl_ap_test_channel)
+
+    add_executable(mcl_ap_test_standalone_header tests/test_standalone_header.c)
+    target_link_libraries(mcl_ap_test_standalone_header PRIVATE mcl_ap_channel)
+    set_target_properties(mcl_ap_test_standalone_header PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+    add_test(NAME mcl_ap_standalone_header COMMAND mcl_ap_test_standalone_header)
 endif()
