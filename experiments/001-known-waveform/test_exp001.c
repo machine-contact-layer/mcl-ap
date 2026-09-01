@@ -14,6 +14,10 @@
  *  10. E3 source WAV generator with training sequence
  */
 
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include "exp001.h"
 #include "mcl/wire.h"
 #include <stdio.h>
@@ -520,13 +524,14 @@ static void test_expanded_impairments(void)
         }
     }
 
-    /* 4. Band attenuation (notch at 4000 Hz, 10 dB suppression) */
+    /* 4. Band attenuation (notch at 4000 Hz, -10 dB suppression) */
     {
         TEST(impairment_band_attenuation);
         memset(&imp, 0, sizeof(imp));
-        imp.band_atten_f_low_hz = 3800.0;
-        imp.band_atten_f_high_hz = 4200.0;
-        imp.band_atten_factor = 0.316; /* -10 dB */
+        imp.enable_band_atten = 1u;
+        imp.band_atten_f_center_hz = 4000.0;
+        imp.band_atten_bandwidth_hz = 400.0;
+        imp.band_atten_gain_db = -10.0;
 
         exp001_apply_impairments(&imp, g_pcm_a, frame_samples, g_pcm_b, PCM_BUF_SIZE, &impaired_samples);
         st = exp001_frame_decode(&fconfig, g_pcm_b, impaired_samples, recovered, sizeof(recovered), &decode_res);
@@ -544,7 +549,9 @@ static void test_expanded_impairments(void)
         imp.num_multipath_paths = 2u;
         imp.multipath_delays_ms[1] = 4.0;
         imp.multipath_gains[1] = 0.20;
+        imp.enable_sro = 1u;
         imp.sample_rate_offset_ppm = 25.0;
+        imp.enable_awgn = 1u;
         imp.awgn_snr_db = 30.0;
         imp.rng_seed = 2026u;
 
@@ -558,7 +565,355 @@ static void test_expanded_impairments(void)
     }
 }
 
-/* ========== Test 10: Generate E3 Source WAV ========== */
+/* ========== Test: AWGN Measured Power & SNR Verification ========== */
+
+static void test_awgn_measured_power_levels(void)
+{
+    const double target_snrs[] = { 30.0, 20.0, 10.0, 5.0, 0.0 };
+    const size_t N = 48000u; /* 1.0 s of audio */
+    unsigned s;
+    size_t i;
+
+    /* Generate reference 1000 Hz sine wave: P_sig = 0.5 */
+    for (i = 0u; i < N; ++i) {
+        double t = (double)i / (double)EXP001_SAMPLE_RATE;
+        g_pcm_a[i] = (float)sin(2.0 * 3.14159265358979323846 * 1000.0 * t);
+    }
+
+    double sig_power = 0.0;
+    for (i = 0u; i < N; ++i) {
+        sig_power += (double)g_pcm_a[i] * (double)g_pcm_a[i];
+    }
+    sig_power /= (double)N;
+
+    for (s = 0u; s < sizeof(target_snrs)/sizeof(target_snrs[0]); ++s) {
+        double target = target_snrs[s];
+        exp001_impairment_config_t imp;
+        size_t impaired_n = 0u;
+        double noise_power = 0.0;
+        double measured_snr;
+        exp001_status_t st;
+
+        TEST(awgn_measured_power);
+        printf("(target=%4.1f dB) ... ", target);
+
+        memset(&imp, 0, sizeof(imp));
+        imp.enable_awgn = 1u;
+        imp.awgn_snr_db = target;
+        imp.rng_seed = 54321u + s * 101u;
+
+        st = exp001_apply_impairments(&imp, g_pcm_a, N, g_pcm_b, PCM_BUF_SIZE, &impaired_n);
+        if (st != EXP001_OK || impaired_n != N) FAIL("apply_impairments failed");
+
+        /* Extract noise: w[i] = dst[i] - src[i] */
+        for (i = 0u; i < N; ++i) {
+            double n = (double)g_pcm_b[i] - (double)g_pcm_a[i];
+            noise_power += n * n;
+        }
+        noise_power /= (double)N;
+
+        if (noise_power <= 0.0) FAIL("noise power is zero");
+
+        measured_snr = 10.0 * log10(sig_power / noise_power);
+        double err = fabs(measured_snr - target);
+
+        printf("[P_sig=%.4f P_noise=%.6f SNR_meas=%5.2f dB err=%4.2f dB] ",
+               sig_power, noise_power, measured_snr, err);
+
+        /* Monte-Carlo tolerance across 48,000 samples: within 0.25 dB */
+        if (err > 0.25) {
+            FAIL("SNR tolerance exceeded");
+        }
+
+        /* Specifically at 0 dB, noise power must equal signal power within 5% */
+        if (target == 0.0) {
+            double ratio = noise_power / sig_power;
+            if (fabs(ratio - 1.0) > 0.05) {
+                FAIL("0 dB noise power does not match signal power");
+            }
+        }
+
+        PASS();
+    }
+}
+
+/* ========== Test: Colored Noise Measured Power & SNR Verification ========== */
+
+static void test_colored_noise_measured_power_levels(void)
+{
+    const double target_snrs[] = { 30.0, 20.0, 15.0, 10.0, 5.0, 0.0 };
+    const size_t N = 48000u;
+    unsigned s;
+    size_t i;
+
+    /* Generate reference 1000 Hz sine wave: P_sig = 0.5 */
+    for (i = 0u; i < N; ++i) {
+        double t = (double)i / (double)EXP001_SAMPLE_RATE;
+        g_pcm_a[i] = (float)sin(2.0 * 3.14159265358979323846 * 1000.0 * t);
+    }
+
+    double sig_power = 0.0;
+    for (i = 0u; i < N; ++i) {
+        sig_power += (double)g_pcm_a[i] * (double)g_pcm_a[i];
+    }
+    sig_power /= (double)N;
+
+    for (s = 0u; s < sizeof(target_snrs)/sizeof(target_snrs[0]); ++s) {
+        double target = target_snrs[s];
+        exp001_impairment_config_t imp;
+        size_t impaired_n = 0u;
+        double noise_power = 0.0;
+        double measured_snr;
+        exp001_status_t st;
+
+        TEST(colored_noise_measured_power);
+        printf("(target=%4.1f dB) ... ", target);
+
+        memset(&imp, 0, sizeof(imp));
+        imp.enable_colored_noise = 1u;
+        imp.colored_noise_snr_db = target;
+        imp.rng_seed = 98765u + s * 137u;
+
+        st = exp001_apply_impairments(&imp, g_pcm_a, N, g_pcm_b, PCM_BUF_SIZE, &impaired_n);
+        if (st != EXP001_OK || impaired_n != N) FAIL("apply_impairments failed");
+
+        /* Extract filtered noise: c[i] = dst[i] - src[i] */
+        for (i = 0u; i < N; ++i) {
+            double c = (double)g_pcm_b[i] - (double)g_pcm_a[i];
+            noise_power += c * c;
+        }
+        noise_power /= (double)N;
+
+        if (noise_power <= 0.0) FAIL("noise power is zero");
+
+        measured_snr = 10.0 * log10(sig_power / noise_power);
+        double err = fabs(measured_snr - target);
+
+        printf("[P_sig=%.4f P_col=%.6f SNR_meas=%5.2f dB err=%4.2f dB] ",
+               sig_power, noise_power, measured_snr, err);
+
+        /* Scaled post-filter colored noise must match target within 0.05 dB */
+        if (err > 0.05) {
+            FAIL("colored noise SNR tolerance exceeded");
+        }
+
+        PASS();
+    }
+}
+
+/* ========== Test: Band Attenuation Filter Frequency Response Probes ========== */
+
+static void test_band_attenuation_frequency_response(void)
+{
+    const double probe_freqs[] = { 3000.0, 3800.0, 4000.0, 4200.0, 5000.0 };
+    const size_t N = 48000u;
+    const size_t warmup = 2000u;
+    unsigned p;
+    size_t i;
+
+    for (p = 0u; p < sizeof(probe_freqs)/sizeof(probe_freqs[0]); ++p) {
+        double freq = probe_freqs[p];
+        double in_energy = 0.0, out_energy = 0.0;
+        double rms_in, rms_out, atten_db;
+        exp001_status_t st;
+
+        TEST(band_atten_probe);
+        printf("(freq=%4.0f Hz) ... ", freq);
+
+        /* Pure sine probe */
+        for (i = 0u; i < N; ++i) {
+            double t = (double)i / (double)EXP001_SAMPLE_RATE;
+            g_pcm_a[i] = (float)sin(2.0 * 3.14159265358979323846 * freq * t);
+        }
+
+        st = exp001_apply_notch_filter(g_pcm_a, N, 4000.0, 400.0, -10.0, g_pcm_b);
+        if (st != EXP001_OK) FAIL("apply_notch_filter failed");
+
+        /* Measure steady-state RMS after warmup */
+        for (i = warmup; i < N; ++i) {
+            in_energy += (double)g_pcm_a[i] * (double)g_pcm_a[i];
+            out_energy += (double)g_pcm_b[i] * (double)g_pcm_b[i];
+        }
+        rms_in = sqrt(in_energy / (double)(N - warmup));
+        rms_out = sqrt(out_energy / (double)(N - warmup));
+        atten_db = 20.0 * log10(rms_out / rms_in);
+
+        printf("[RMS_in=%.4f RMS_out=%.4f Atten=%6.2f dB] ", rms_in, rms_out, atten_db);
+
+        if (freq == 4000.0) {
+            /* Notch center must be -10.0 dB within 0.2 dB */
+            if (fabs(atten_db - (-10.0)) > 0.2) {
+                FAIL("center frequency 4000 Hz attenuation not -10 dB");
+            }
+        } else if (freq == 3800.0 || freq == 4200.0) {
+            /* Band edges must be around half-attenuation (-5 dB) */
+            if (atten_db < -7.0 || atten_db > -3.0) {
+                FAIL("band edge attenuation out of expected range");
+            }
+        } else {
+            /* 3000 Hz and 5000 Hz must be essentially unattenuated (< 1.0 dB) */
+            if (fabs(atten_db) > 1.0) {
+                FAIL("out-of-band frequency attenuated excessively");
+            }
+        }
+
+        PASS();
+    }
+}
+
+/* ========== Test: Hardened WAV Reader Chunk Scanner & Format Rejection ========== */
+
+static void test_write_u16(FILE *f, uint16_t v)
+{
+    uint8_t b[2];
+    b[0] = (uint8_t)(v & 0xFFu);
+    b[1] = (uint8_t)((v >> 8u) & 0xFFu);
+    fwrite(b, 1, 2, f);
+}
+
+static void test_write_u32(FILE *f, uint32_t v)
+{
+    uint8_t b[4];
+    b[0] = (uint8_t)(v & 0xFFu);
+    b[1] = (uint8_t)((v >> 8u) & 0xFFu);
+    b[2] = (uint8_t)((v >> 16u) & 0xFFu);
+    b[3] = (uint8_t)((v >> 24u) & 0xFFu);
+    fwrite(b, 1, 4, f);
+}
+
+static void test_wav_reader_hardened(void)
+{
+    const char *test_junk_wav = "test_junk_chunk.wav";
+    const char *test_stereo_wav = "test_stereo.wav";
+    const char *test_bad_fmt_wav = "test_bad_fmt.wav";
+    size_t num_read = 0u;
+    uint32_t srate = 0u;
+    uint16_t bits = 0u, chans = 0u;
+    exp001_status_t st;
+    size_t i;
+
+    /* 1. Create a WAV file containing an unknown "JUNK" chunk between "fmt " and "data" */
+    {
+        TEST(wav_reader_junk_chunk_between_fmt_and_data);
+        FILE *f = fopen(test_junk_wav, "wb");
+        if (f == NULL) FAIL("cannot create test WAV");
+
+        uint32_t pcm_samples = 480u;
+        uint32_t data_bytes = pcm_samples * 2u;
+        uint32_t junk_bytes = 16u;
+        uint32_t file_size = 36u + (8u + junk_bytes) + data_bytes;
+
+        fwrite("RIFF", 1, 4, f);
+        test_write_u32(f, file_size);
+        fwrite("WAVE", 1, 4, f);
+
+        /* fmt chunk */
+        fwrite("fmt ", 1, 4, f);
+        test_write_u32(f, 16u);
+        test_write_u16(f, 1u);      /* PCM */
+        test_write_u16(f, 1u);      /* mono */
+        test_write_u32(f, 48000u);  /* 48 kHz */
+        test_write_u32(f, 96000u);  /* byte rate */
+        test_write_u16(f, 2u);      /* block align */
+        test_write_u16(f, 16u);     /* 16-bit */
+
+        /* UNKNOWN "JUNK" chunk */
+        fwrite("JUNK", 1, 4, f);
+        test_write_u32(f, junk_bytes);
+        char junk_data[16] = "PADDING_JUNK_OK!";
+        fwrite(junk_data, 1, 16, f);
+
+        /* data chunk */
+        fwrite("data", 1, 4, f);
+        test_write_u32(f, data_bytes);
+        for (i = 0u; i < pcm_samples; ++i) {
+            test_write_u16(f, (uint16_t)(i * 50u));
+        }
+        fclose(f);
+
+        st = exp001_wav_read(test_junk_wav, g_pcm_a, PCM_BUF_SIZE, &num_read, &srate, &bits, &chans);
+        remove(test_junk_wav);
+
+        if (st != EXP001_OK || num_read != pcm_samples || srate != 48000u || chans != 1u || bits != 16u) {
+            FAIL("failed to parse WAV with JUNK chunk between fmt and data");
+        }
+        PASS();
+    }
+
+    /* 2. Rejection of stereo audio */
+    {
+        TEST(wav_reader_reject_stereo);
+        FILE *f = fopen(test_stereo_wav, "wb");
+        if (f != NULL) {
+            uint32_t data_bytes = 480u * 4u;
+            uint32_t file_size = 36u + data_bytes;
+            fwrite("RIFF", 1, 4, f);
+            test_write_u32(f, file_size);
+            fwrite("WAVE", 1, 4, f);
+            fwrite("fmt ", 1, 4, f);
+            test_write_u32(f, 16u);
+            test_write_u16(f, 1u);      /* PCM */
+            test_write_u16(f, 2u);      /* STEREO (must be rejected) */
+            test_write_u32(f, 48000u);
+            test_write_u32(f, 192000u);
+            test_write_u16(f, 4u);
+            test_write_u16(f, 16u);
+            fwrite("data", 1, 4, f);
+            test_write_u32(f, data_bytes);
+            for (i = 0u; i < 480u * 2u; ++i) {
+                test_write_u16(f, 0u);
+            }
+            fclose(f);
+        }
+
+        st = exp001_wav_read(test_stereo_wav, g_pcm_a, PCM_BUF_SIZE, &num_read, &srate, &bits, &chans);
+        remove(test_stereo_wav);
+
+        if (st == EXP001_ERR_WAV_FORMAT) {
+            PASS();
+        } else {
+            FAIL("stereo was not explicitly rejected");
+        }
+    }
+
+    /* 3. Rejection of non-PCM format (e.g. format 3 = IEEE float) */
+    {
+        TEST(wav_reader_reject_non_pcm);
+        FILE *f = fopen(test_bad_fmt_wav, "wb");
+        if (f != NULL) {
+            uint32_t data_bytes = 480u * 4u;
+            uint32_t file_size = 36u + data_bytes;
+            fwrite("RIFF", 1, 4, f);
+            test_write_u32(f, file_size);
+            fwrite("WAVE", 1, 4, f);
+            fwrite("fmt ", 1, 4, f);
+            test_write_u32(f, 16u);
+            test_write_u16(f, 3u);      /* IEEE FLOAT (must be rejected) */
+            test_write_u16(f, 1u);      /* mono */
+            test_write_u32(f, 48000u);
+            test_write_u32(f, 192000u);
+            test_write_u16(f, 4u);
+            test_write_u16(f, 32u);
+            fwrite("data", 1, 4, f);
+            test_write_u32(f, data_bytes);
+            for (i = 0u; i < 480u; ++i) {
+                test_write_u32(f, 0u);
+            }
+            fclose(f);
+        }
+
+        st = exp001_wav_read(test_bad_fmt_wav, g_pcm_a, PCM_BUF_SIZE, &num_read, &srate, &bits, &chans);
+        remove(test_bad_fmt_wav);
+
+        if (st == EXP001_ERR_WAV_FORMAT) {
+            PASS();
+        } else {
+            FAIL("non-PCM format was not explicitly rejected");
+        }
+    }
+}
+
+/* ========== Test: Generate E3 Source WAV ========== */
 
 static void generate_e3_source_wav(void)
 {
@@ -627,6 +982,18 @@ int main(void)
 
     printf("\n--- Expanded Deterministic Impairments ---\n");
     test_expanded_impairments();
+
+    printf("\n--- Measured AWGN Power Tests (30, 20, 10, 5, 0 dB) ---\n");
+    test_awgn_measured_power_levels();
+
+    printf("\n--- Measured Colored Noise Power Tests (30, 20, 15, 10, 5, 0 dB) ---\n");
+    test_colored_noise_measured_power_levels();
+
+    printf("\n--- Verified Band Attenuation Frequency Response Probes ---\n");
+    test_band_attenuation_frequency_response();
+
+    printf("\n--- Hardened WAV Reader Tests (Chunk Scanner & Format Rejection) ---\n");
+    test_wav_reader_hardened();
 
     generate_e3_source_wav();
 

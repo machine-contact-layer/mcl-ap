@@ -864,10 +864,14 @@ exp001_status_t exp001_wav_read(
 {
     FILE *f;
     char chunk_id[4];
-    uint32_t chunk_size;
-    uint16_t audio_format;
-    uint32_t data_size;
-    size_t num_samples;
+    uint32_t file_size;
+    int fmt_seen = 0;
+    int data_seen = 0;
+    uint16_t audio_format = 0u;
+    uint16_t chans = 0u;
+    uint32_t srate = 0u;
+    uint16_t bits = 0u;
+    size_t num_samples = 0u;
     size_t i;
 
     if (path == NULL || out_samples == NULL || num_samples_read == NULL) {
@@ -879,63 +883,85 @@ exp001_status_t exp001_wav_read(
         return EXP001_ERR_FILE_IO;
     }
 
-    fread(chunk_id, 1, 4, f);
-    if (memcmp(chunk_id, "RIFF", 4) != 0) {
+    if (fread(chunk_id, 1, 4, f) != 4 || memcmp(chunk_id, "RIFF", 4) != 0) {
         fclose(f);
         return EXP001_ERR_WAV_FORMAT;
     }
-    wav_read_u32(f);
-    fread(chunk_id, 1, 4, f);
-    if (memcmp(chunk_id, "WAVE", 4) != 0) {
-        fclose(f);
-        return EXP001_ERR_WAV_FORMAT;
-    }
+    file_size = wav_read_u32(f);
+    (void)file_size;
 
-    fread(chunk_id, 1, 4, f);
-    if (memcmp(chunk_id, "fmt ", 4) != 0) {
-        fclose(f);
-        return EXP001_ERR_WAV_FORMAT;
-    }
-    chunk_size = wav_read_u32(f);
-    audio_format = wav_read_u16(f);
-    if (audio_format != 1u) {
-        fclose(f);
-        return EXP001_ERR_WAV_FORMAT;
-    }
-    *channels = wav_read_u16(f);
-    *sample_rate = wav_read_u32(f);
-    wav_read_u32(f);
-    wav_read_u16(f);
-    *bits_per_sample = wav_read_u16(f);
-
-    if (chunk_size > 16u) {
-        fseek(f, (long)(chunk_size - 16u), SEEK_CUR);
-    }
-
-    fread(chunk_id, 1, 4, f);
-    if (memcmp(chunk_id, "data", 4) != 0) {
-        fclose(f);
-        return EXP001_ERR_WAV_FORMAT;
-    }
-    data_size = wav_read_u32(f);
-
-    if (*bits_per_sample != 16u) {
+    if (fread(chunk_id, 1, 4, f) != 4 || memcmp(chunk_id, "WAVE", 4) != 0) {
         fclose(f);
         return EXP001_ERR_WAV_FORMAT;
     }
 
-    num_samples = data_size / (*channels * (*bits_per_sample / 8u));
-    if (num_samples > out_capacity) {
-        num_samples = out_capacity;
+    /* Loop over RIFF chunks until data is read or EOF */
+    while (fread(chunk_id, 1, 4, f) == 4) {
+        uint32_t chunk_len = wav_read_u32(f);
+
+        if (memcmp(chunk_id, "fmt ", 4) == 0) {
+            if (fmt_seen != 0 || chunk_len < 16u) {
+                fclose(f);
+                return EXP001_ERR_WAV_FORMAT;
+            }
+            audio_format = wav_read_u16(f);
+            chans = wav_read_u16(f);
+            srate = wav_read_u32(f);
+            wav_read_u32(f); /* byte_rate */
+            wav_read_u16(f); /* block_align */
+            bits = wav_read_u16(f);
+
+            /* Reject unsupported formats explicitly: must be PCM 16-bit mono 48 kHz */
+            if (audio_format != 1u || bits != 16u || chans != 1u) {
+                fclose(f);
+                return EXP001_ERR_WAV_FORMAT;
+            }
+
+            if (chunk_len > 16u) {
+                fseek(f, (long)(chunk_len - 16u), SEEK_CUR);
+            }
+            if ((chunk_len & 1u) != 0u) {
+                fseek(f, 1, SEEK_CUR); /* padding byte */
+            }
+
+            if (sample_rate != NULL) *sample_rate = srate;
+            if (bits_per_sample != NULL) *bits_per_sample = bits;
+            if (channels != NULL) *channels = chans;
+            fmt_seen = 1;
+        } else if (memcmp(chunk_id, "data", 4) == 0) {
+            if (fmt_seen == 0) {
+                fclose(f);
+                return EXP001_ERR_WAV_FORMAT;
+            }
+            data_seen = 1;
+            num_samples = chunk_len / 2u; /* 16-bit mono = 2 bytes per sample */
+            if (num_samples > out_capacity) {
+                num_samples = out_capacity;
+            }
+
+            for (i = 0u; i < num_samples; ++i) {
+                int16_t pcm_val = (int16_t)wav_read_u16(f);
+                out_samples[i] = (float)pcm_val / 32768.0f;
+            }
+
+            *num_samples_read = num_samples;
+            break; /* Successfully read data chunk */
+        } else {
+            /* Unknown chunk (e.g. "JUNK", "LIST", "INFO", "bext") - skip safely */
+            long skip_len = (long)((chunk_len + 1u) & ~1u);
+            if (fseek(f, skip_len, SEEK_CUR) != 0) {
+                fclose(f);
+                return EXP001_ERR_WAV_FORMAT;
+            }
+        }
     }
 
-    for (i = 0u; i < num_samples; ++i) {
-        int16_t pcm_val = (int16_t)wav_read_u16(f);
-        out_samples[i] = (float)pcm_val / 32768.0f;
-    }
-
-    *num_samples_read = num_samples;
     fclose(f);
+
+    if (fmt_seen == 0 || data_seen == 0) {
+        return EXP001_ERR_WAV_FORMAT;
+    }
+
     return EXP001_OK;
 }
 
@@ -976,6 +1002,59 @@ exp001_status_t exp001_resample_sro(
     }
 
     *num_dst_samples = j;
+    return EXP001_OK;
+}
+
+/* ========== Verified 2nd-Order IIR Peaking / Notch Filter ========== */
+
+exp001_status_t exp001_apply_notch_filter(
+    const float *src,
+    size_t num_samples,
+    double f_center_hz,
+    double bandwidth_hz,
+    double gain_db,
+    float *dst)
+{
+    double w0, Q, A, alpha;
+    double b0, b1, b2, a0, a1, a2;
+    double B0, B1, B2, A1, A2;
+    double x_1 = 0.0, x_2 = 0.0;
+    double y_1 = 0.0, y_2 = 0.0;
+    size_t i;
+
+    if (src == NULL || dst == NULL || num_samples == 0u ||
+        f_center_hz <= 0.0 || bandwidth_hz <= 0.0) {
+        return EXP001_ERR_INVALID_ARGUMENT;
+    }
+
+    w0 = 2.0 * M_PI * f_center_hz / (double)EXP001_SAMPLE_RATE;
+    Q = f_center_hz / bandwidth_hz;
+    A = pow(10.0, gain_db / 40.0);
+    alpha = sin(w0) / (2.0 * Q);
+
+    b0 = 1.0 + alpha * A;
+    b1 = -2.0 * cos(w0);
+    b2 = 1.0 - alpha * A;
+    a0 = 1.0 + alpha / A;
+    a1 = -2.0 * cos(w0);
+    a2 = 1.0 - alpha / A;
+
+    B0 = b0 / a0;
+    B1 = b1 / a0;
+    B2 = b2 / a0;
+    A1 = a1 / a0;
+    A2 = a2 / a0;
+
+    for (i = 0u; i < num_samples; ++i) {
+        double x = (double)src[i];
+        double y = B0 * x + B1 * x_1 + B2 * x_2 - A1 * y_1 - A2 * y_2;
+        x_2 = x_1;
+        x_1 = x;
+        y_2 = y_1;
+        y_1 = y;
+        dst[i] = (float)y;
+    }
+
     return EXP001_OK;
 }
 
@@ -1053,20 +1132,22 @@ exp001_status_t exp001_apply_impairments(
         }
     }
 
-    /* 2. Band attenuation / erasure */
-    if (config->band_atten_f_low_hz > 0.0 &&
-        config->band_atten_f_high_hz > config->band_atten_f_low_hz) {
-        /*
-         * Apply 2nd-order IIR bandstop / notch attenuation centered at (f_low + f_high)/2.
-         * For simplicity and determinism, a 3-tap FIR filter or frequency-domain suppression.
-         */
-        double f_mid = (config->band_atten_f_low_hz + config->band_atten_f_high_hz) / 2.0;
-        double w = 2.0 * M_PI * f_mid / (double)EXP001_SAMPLE_RATE;
-        double alpha = config->band_atten_factor; /* e.g. 0.1 for 20 dB suppression */
+    /* 2. Band attenuation / notch filter */
+    {
+        int do_band_atten = (config->enable_band_atten != 0u) ||
+                            (config->band_atten_f_low_hz > 0.0 &&
+                             config->band_atten_f_high_hz > config->band_atten_f_low_hz);
+        if (do_band_atten != 0) {
+            double f_center = (config->band_atten_f_center_hz > 0.0) ?
+                config->band_atten_f_center_hz :
+                (config->band_atten_f_low_hz + config->band_atten_f_high_hz) / 2.0;
+            double bw = (config->band_atten_bandwidth_hz > 0.0) ?
+                config->band_atten_bandwidth_hz :
+                (config->band_atten_f_high_hz - config->band_atten_f_low_hz);
+            double gain_db = (config->band_atten_gain_db != 0.0) ?
+                config->band_atten_gain_db : -10.0;
 
-        for (i = 1u; i + 1u < num_samples; ++i) {
-            double notch_component = (double)dst[i] - cos(w) * ((double)dst[i - 1] + (double)dst[i + 1]) * 0.5;
-            dst[i] = (float)((double)dst[i] - (1.0 - alpha) * notch_component);
+            exp001_apply_notch_filter(dst, current_len, f_center, bw, gain_db, dst);
         }
     }
 
@@ -1077,53 +1158,81 @@ exp001_status_t exp001_apply_impairments(
     sig_power /= (double)current_len;
     if (sig_power <= 0.0) sig_power = 1e-6;
 
-    /* 3. AWGN */
-    if (config->awgn_snr_db > 0.0) {
-        double noise_power = sig_power / pow(10.0, config->awgn_snr_db / 10.0);
-        double noise_std = sqrt(noise_power);
+    /* 3. AWGN (explicit enablement or snr_db > 0) */
+    {
+        int do_awgn = (config->enable_awgn != 0u) || (config->awgn_snr_db > 0.0);
+        if (do_awgn != 0) {
+            double noise_power = sig_power / pow(10.0, config->awgn_snr_db / 10.0);
+            double noise_std = sqrt(noise_power);
 
-        for (i = 0u; i < current_len; ++i) {
-            dst[i] += (float)(noise_std * gaussian(&rng_state));
+            for (i = 0u; i < current_len; ++i) {
+                dst[i] += (float)(noise_std * gaussian(&rng_state));
+            }
         }
     }
 
-    /* 4. Colored noise (first-order lowpass / pink-ish filtered noise) */
-    if (config->colored_noise_snr_db > 0.0) {
-        double noise_power = sig_power / pow(10.0, config->colored_noise_snr_db / 10.0);
-        double noise_std = sqrt(noise_power);
-        double filter_state = 0.0;
+    /* 4. Colored noise with separate filtered noise power measurement and precise scaling */
+    {
+        int do_colored = (config->enable_colored_noise != 0u) || (config->colored_noise_snr_db > 0.0);
+        if (do_colored != 0) {
+            double target_colored_power = sig_power / pow(10.0, config->colored_noise_snr_db / 10.0);
+            uint32_t saved_rng = rng_state;
+            double filter_state = 0.0;
+            double noise_energy = 0.0;
+            double scale;
 
-        for (i = 0u; i < current_len; ++i) {
-            double white = noise_std * gaussian(&rng_state);
-            filter_state = 0.9 * filter_state + 0.1 * white;
-            dst[i] += (float)filter_state;
+            /* Pass 1: generate and filter unscaled Gaussian noise to measure filter power */
+            for (i = 0u; i < current_len; ++i) {
+                double white = gaussian(&rng_state);
+                filter_state = 0.9 * filter_state + 0.1 * white;
+                noise_energy += filter_state * filter_state;
+            }
+            double measured_noise_power = noise_energy / (double)current_len;
+            if (measured_noise_power <= 0.0) measured_noise_power = 1e-12;
+            scale = sqrt(target_colored_power / measured_noise_power);
+
+            /* Pass 2: replay exact PRNG sequence with precise scaling */
+            rng_state = saved_rng;
+            filter_state = 0.0;
+            for (i = 0u; i < current_len; ++i) {
+                double white = gaussian(&rng_state);
+                filter_state = 0.9 * filter_state + 0.1 * white;
+                dst[i] += (float)(filter_state * scale);
+            }
         }
     }
 
     /* 5. Clipping */
-    if (config->clipping_threshold > 0.0 && config->clipping_threshold < 1.0) {
-        float thresh = (float)config->clipping_threshold;
-        for (i = 0u; i < current_len; ++i) {
-            if (dst[i] > thresh) dst[i] = thresh;
-            if (dst[i] < -thresh) dst[i] = -thresh;
+    {
+        int do_clipping = (config->enable_clipping != 0u) ||
+                          (config->clipping_threshold > 0.0 && config->clipping_threshold < 1.0);
+        if (do_clipping != 0) {
+            float thresh = (float)config->clipping_threshold;
+            for (i = 0u; i < current_len; ++i) {
+                if (dst[i] > thresh) dst[i] = thresh;
+                if (dst[i] < -thresh) dst[i] = -thresh;
+            }
         }
     }
 
     /* 6. Sample Rate Offset (out-of-place) */
-    if (config->sample_rate_offset_ppm != 0.0) {
-        float temp_buf[EXP001_PREAMBLE_MAX_SAMPLES * 2u];
-        size_t sro_out = 0u;
-        size_t copy_len = (current_len < sizeof(temp_buf)/sizeof(temp_buf[0])) ?
-                           current_len : sizeof(temp_buf)/sizeof(temp_buf[0]);
+    {
+        int do_sro = (config->enable_sro != 0u) || (config->sample_rate_offset_ppm != 0.0);
+        if (do_sro != 0) {
+            float temp_buf[EXP001_PREAMBLE_MAX_SAMPLES * 2u];
+            size_t sro_out = 0u;
+            size_t copy_len = (current_len < sizeof(temp_buf)/sizeof(temp_buf[0])) ?
+                               current_len : sizeof(temp_buf)/sizeof(temp_buf[0]);
 
-        memcpy(temp_buf, dst, copy_len * sizeof(float));
-        exp001_status_t rst = exp001_resample_sro(
-            temp_buf, copy_len,
-            config->sample_rate_offset_ppm,
-            dst, dst_capacity,
-            &sro_out);
-        if (rst == EXP001_OK) {
-            current_len = sro_out;
+            memcpy(temp_buf, dst, copy_len * sizeof(float));
+            exp001_status_t rst = exp001_resample_sro(
+                temp_buf, copy_len,
+                config->sample_rate_offset_ppm,
+                dst, dst_capacity,
+                &sro_out);
+            if (rst == EXP001_OK) {
+                current_len = sro_out;
+            }
         }
     }
 

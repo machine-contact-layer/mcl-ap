@@ -72,7 +72,14 @@ int main(int argc, char **argv)
     printf("  Samples: %zu (%.3f s)\n", num_samples, (double)num_samples / (double)sample_rate);
 
     if (sample_rate != EXP001_SAMPLE_RATE) {
-        fprintf(stderr, "Warning: Expected %u Hz, got %u Hz\n", EXP001_SAMPLE_RATE, sample_rate);
+        fprintf(stderr, "Error: Unsupported sample rate %u Hz (required: %u Hz)\n",
+                sample_rate, EXP001_SAMPLE_RATE);
+        return 3;
+    }
+    if (channels != 1u) {
+        fprintf(stderr, "Error: Unsupported channel count %u (required: 1 mono)\n",
+                (unsigned)channels);
+        return 4;
     }
 
     /* Configure expected frame parameters (LFM chirp, 2000-6000 Hz) */

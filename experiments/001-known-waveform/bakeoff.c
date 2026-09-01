@@ -303,6 +303,7 @@ int main(void)
         char title[64];
         for (s = 0u; s < sizeof(snrs)/sizeof(snrs[0]); ++s) {
             memset(&imp, 0, sizeof(imp));
+            imp.enable_awgn = 1u;
             imp.awgn_snr_db = snrs[s];
             sprintf(title, "AWGN SNR = %g dB", snrs[s]);
 
@@ -317,6 +318,7 @@ int main(void)
     /* Scenario 3: Colored Noise (15 dB SNR) */
     {
         memset(&imp, 0, sizeof(imp));
+        imp.enable_colored_noise = 1u;
         imp.colored_noise_snr_db = 15.0;
         for (t = 0u; t < 4u; ++t) {
             eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
@@ -358,9 +360,10 @@ int main(void)
     /* Scenario 6: Band Attenuation (-10 dB notch at 4000 Hz) */
     {
         memset(&imp, 0, sizeof(imp));
-        imp.band_atten_f_low_hz = 3800.0;
-        imp.band_atten_f_high_hz = 4200.0;
-        imp.band_atten_factor = 0.316;
+        imp.enable_band_atten = 1u;
+        imp.band_atten_f_center_hz = 4000.0;
+        imp.band_atten_bandwidth_hz = 400.0;
+        imp.band_atten_gain_db = -10.0;
 
         for (t = 0u; t < 4u; ++t) {
             eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);
@@ -372,6 +375,7 @@ int main(void)
     /* Scenario 7: Clipping (threshold = 0.5) */
     {
         memset(&imp, 0, sizeof(imp));
+        imp.enable_clipping = 1u;
         imp.clipping_threshold = 0.5;
 
         for (t = 0u; t < 4u; ++t) {
@@ -384,6 +388,7 @@ int main(void)
     /* Scenario 8: Sample Rate Offset (+50 ppm) */
     {
         memset(&imp, 0, sizeof(imp));
+        imp.enable_sro = 1u;
         imp.sample_rate_offset_ppm = 50.0;
 
         for (t = 0u; t < 4u; ++t) {
@@ -399,7 +404,9 @@ int main(void)
         imp.num_multipath_paths = 2u;
         imp.multipath_delays_ms[1] = 4.0;
         imp.multipath_gains[1] = 0.25;
+        imp.enable_sro = 1u;
         imp.sample_rate_offset_ppm = 25.0;
+        imp.enable_awgn = 1u;
         imp.awgn_snr_db = 30.0;
 
         for (t = 0u; t < 4u; ++t) {

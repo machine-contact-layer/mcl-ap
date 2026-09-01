@@ -277,9 +277,16 @@ exp001_status_t exp001_wav_read(
 /* ---------- Impairment harness ---------- */
 
 typedef struct {
-    double awgn_snr_db;             /* <= 0 disables */
-    double colored_noise_snr_db;    /* <= 0 disables */
+    uint8_t enable_awgn;
+    double awgn_snr_db;
+
+    uint8_t enable_colored_noise;
+    double colored_noise_snr_db;
+
+    uint8_t enable_clipping;
     double clipping_threshold;       /* 0.0-1.0; >= 1.0 disables */
+
+    uint8_t enable_sro;
     double sample_rate_offset_ppm;   /* 0.0 disables */
 
     /* Multipath */
@@ -287,13 +294,29 @@ typedef struct {
     double multipath_delays_ms[EXP001_MAX_MULTIPATH_PATHS];
     double multipath_gains[EXP001_MAX_MULTIPATH_PATHS];
 
-    /* Band attenuation / erasure */
-    double band_atten_f_low_hz;     /* 0 disables */
-    double band_atten_f_high_hz;
-    double band_atten_factor;        /* e.g. 0.1 for 20 dB suppression */
+    /* Band attenuation / notch */
+    uint8_t enable_band_atten;
+    double band_atten_f_center_hz;   /* center frequency, e.g. 4000 Hz */
+    double band_atten_bandwidth_hz;  /* bandwidth, e.g. 400 Hz (3800-4200 Hz) */
+    double band_atten_gain_db;       /* attenuation depth, e.g. -10.0 dB */
+    double band_atten_f_low_hz;      /* backward compatibility */
+    double band_atten_f_high_hz;     /* backward compatibility */
+    double band_atten_factor;        /* backward compatibility */
 
     uint32_t rng_seed;
 } exp001_impairment_config_t;
+
+/*
+ * Apply verified 2nd-order IIR peaking / notch filter:
+ * Attenuates by gain_db at f_center_hz with bandwidth_hz.
+ */
+exp001_status_t exp001_apply_notch_filter(
+    const float *src,
+    size_t num_samples,
+    double f_center_hz,
+    double bandwidth_hz,
+    double gain_db,
+    float *dst);
 
 /*
  * Out-of-place SRO resampler:
