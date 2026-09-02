@@ -140,3 +140,18 @@ Every physical experiment should retain:
 - exact decoder/profile configuration
 
 Do not publish bitrate claims without the accounting method and reliability criterion.
+
+## Experiment 003 — band-informed FSK candidate (IMPLEMENTED)
+
+Takes the Experiment 002 part A measurement and changes exactly one variable in the
+Experiment 001 waveform: the FSK mark tone moves from 5000 Hz, which the measurement found
+19-21 dB down inside a notch, to 6000 Hz, which sits at or above the 3 kHz reference on both
+receivers available.
+
+In a single controlled session on one rig, that change took exact Wire and semantic recovery
+from 0/10 to 9/10 on the DFR1154 receiver and from 0/10 to 4/10 on the laptop Realtek
+receiver, against a 3000/5000 control captured in the same session.
+
+The result is about method, not about 6 kHz: profiles must be selected from measurement of the
+actual path. AP-B0 remains NOT selected, and 4/10 on the laptop receiver shows a fixed binary
+FSK pair is still fragile. Implementation and evidence: `003-band-informed-candidate/`.

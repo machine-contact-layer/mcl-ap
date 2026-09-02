@@ -413,6 +413,19 @@ size_t exp001_fsk_modulate(
     float *out_samples,
     size_t out_capacity)
 {
+    return exp001_fsk_modulate_at(payload, payload_len,
+                                  EXP001_FSK_FREQ_0, EXP001_FSK_FREQ_1,
+                                  out_samples, out_capacity);
+}
+
+size_t exp001_fsk_modulate_at(
+    const uint8_t *payload,
+    size_t payload_len,
+    double freq_0_hz,
+    double freq_1_hz,
+    float *out_samples,
+    size_t out_capacity)
+{
     size_t samples_per_bit = EXP001_SAMPLE_RATE / EXP001_FSK_BAUD;
     size_t total_bits = payload_len * 8u;
     size_t total_samples = total_bits * samples_per_bit;
@@ -430,7 +443,7 @@ size_t exp001_fsk_modulate(
         size_t byte_idx = bit_idx / 8u;
         unsigned bit_pos = 7u - (unsigned)(bit_idx % 8u);  /* MSB first */
         uint8_t bit_val = (uint8_t)((payload[byte_idx] >> bit_pos) & 1u);
-        double freq = (bit_val == 0u) ? EXP001_FSK_FREQ_0 : EXP001_FSK_FREQ_1;
+        double freq = (bit_val == 0u) ? freq_0_hz : freq_1_hz;
         double phase_inc = 2.0 * M_PI * freq / (double)EXP001_SAMPLE_RATE;
 
         for (s = 0u; s < samples_per_bit; ++s) {
@@ -489,6 +502,24 @@ size_t exp001_fsk_demodulate_timed(
     double *estimated_phase_offset,
     double *estimated_samples_per_symbol)
 {
+    return exp001_fsk_demodulate_timed_at(samples, num_samples, training_bits,
+                                          EXP001_FSK_FREQ_0, EXP001_FSK_FREQ_1,
+                                          out_payload, out_capacity,
+                                          estimated_phase_offset,
+                                          estimated_samples_per_symbol);
+}
+
+size_t exp001_fsk_demodulate_timed_at(
+    const float *samples,
+    size_t num_samples,
+    size_t training_bits,
+    double freq_0_hz,
+    double freq_1_hz,
+    uint8_t *out_payload,
+    size_t out_capacity,
+    double *estimated_phase_offset,
+    double *estimated_samples_per_symbol)
+{
     const size_t nominal_sps = EXP001_SAMPLE_RATE / EXP001_FSK_BAUD;
     const double power_floor = 1e-30;
     double best_score = -1e30;
@@ -525,8 +556,8 @@ size_t exp001_fsk_demodulate_timed(
                         continue;
                     }
 
-                    double p0 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_0);
-                    double p1 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_1);
+                    double p0 = goertzel_power(samples + start_idx, win_len, freq_0_hz);
+                    double p1 = goertzel_power(samples + start_idx, win_len, freq_1_hz);
 
                     /* Expected training bit: 01010101 pattern (b & 1) */
                     uint8_t expected = (uint8_t)(b & 1u);
@@ -568,8 +599,8 @@ size_t exp001_fsk_demodulate_timed(
             if (t0 < 0.0 || start_idx + win_len > num_samples) {
                 continue;
             }
-            double p0 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_0);
-            double p1 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_1);
+            double p0 = goertzel_power(samples + start_idx, win_len, freq_0_hz);
+            double p1 = goertzel_power(samples + start_idx, win_len, freq_1_hz);
             double log_ratio = log(p1 + power_floor) - log(p0 + power_floor);
 
             if ((b & 1u) == 0u) {
@@ -616,8 +647,8 @@ size_t exp001_fsk_demodulate_timed(
             break;
         }
 
-        double p0 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_0);
-        double p1 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_1);
+        double p0 = goertzel_power(samples + start_idx, win_len, freq_0_hz);
+        double p1 = goertzel_power(samples + start_idx, win_len, freq_1_hz);
 
         double log_ratio = log(p1 + power_floor) - log(p0 + power_floor);
         if (log_ratio > decision_bias) {
@@ -642,6 +673,28 @@ size_t exp001_fsk_demodulate(
 
 /* ========== Frame Encode / Decode ========== */
 
+/*
+ * Resolve the tone pair for a frame config. A zeroed config selects the
+ * Experiment 001 defaults, so existing callers and retained results are
+ * unaffected.
+ */
+static void resolve_fsk_pair(const exp001_frame_config_t *config,
+                             double *f0, double *f1)
+{
+    /*
+     * Only a value inside the representable audio band counts as a deliberate
+     * request. A caller that fills this struct field by field without zeroing
+     * it would otherwise hand us an arbitrary double and silently transmit on
+     * a nonsense frequency, which is far worse than ignoring the field.
+     */
+    const double nyquist = (double)EXP001_SAMPLE_RATE / 2.0;
+
+    *f0 = (config->fsk_freq_0_hz > 0.0 && config->fsk_freq_0_hz < nyquist)
+        ? config->fsk_freq_0_hz : EXP001_FSK_FREQ_0;
+    *f1 = (config->fsk_freq_1_hz > 0.0 && config->fsk_freq_1_hz < nyquist)
+        ? config->fsk_freq_1_hz : EXP001_FSK_FREQ_1;
+}
+
 size_t exp001_frame_encode(
     const exp001_frame_config_t *config,
     const uint8_t *payload,
@@ -657,6 +710,7 @@ size_t exp001_frame_encode(
     uint8_t phy_header[3];
     uint16_t crc;
     size_t i;
+    double fsk_f0, fsk_f1;
 
     if (config == NULL || payload == NULL || out_samples == NULL) {
         return 0u;
@@ -664,6 +718,7 @@ size_t exp001_frame_encode(
     if (payload_len > EXP001_MAX_PAYLOAD_BYTES) {
         return 0u;
     }
+    resolve_fsk_pair(config, &fsk_f0, &fsk_f1);
 
     /* 1. Leading silence */
     leading_silence_samples = (size_t)floor(config->leading_silence_s * (double)EXP001_SAMPLE_RATE + 0.5);
@@ -695,8 +750,8 @@ size_t exp001_frame_encode(
         for (i = 0u; i < sizeof(training_bytes); ++i) {
             training_bytes[i] = EXP001_TRAINING_BYTE;
         }
-        training_samples = exp001_fsk_modulate(
-            training_bytes, sizeof(training_bytes),
+        training_samples = exp001_fsk_modulate_at(
+            training_bytes, sizeof(training_bytes), fsk_f0, fsk_f1,
             out_samples + pos, out_capacity - pos);
         if (training_samples == 0u) return 0u;
         pos += training_samples;
@@ -708,15 +763,15 @@ size_t exp001_frame_encode(
     phy_header[1] = (uint8_t)(crc >> 8u);
     phy_header[2] = (uint8_t)(crc & 0xFFu);
 
-    header_samples = exp001_fsk_modulate(
-        phy_header, 3u,
+    header_samples = exp001_fsk_modulate_at(
+        phy_header, 3u, fsk_f0, fsk_f1,
         out_samples + pos, out_capacity - pos);
     if (header_samples == 0u) return 0u;
     pos += header_samples;
 
     /* 5. Payload */
-    payload_samples = exp001_fsk_modulate(
-        payload, payload_len,
+    payload_samples = exp001_fsk_modulate_at(
+        payload, payload_len, fsk_f0, fsk_f1,
         out_samples + pos, out_capacity - pos);
     if (payload_samples == 0u) return 0u;
     pos += payload_samples;
@@ -745,10 +800,12 @@ exp001_status_t exp001_frame_decode(
     size_t demod_bytes;
     uint8_t payload_len;
     uint16_t rx_crc, calc_crc;
+    double fsk_f0, fsk_f1;
 
     if (config == NULL || samples == NULL || out_payload == NULL || result == NULL) {
         return EXP001_ERR_INVALID_ARGUMENT;
     }
+    resolve_fsk_pair(config, &fsk_f0, &fsk_f1);
 
     memset(result, 0, sizeof(*result));
 
@@ -784,10 +841,11 @@ exp001_status_t exp001_frame_decode(
 
     /* 2. Demodulate FSK with symbol timing search */
     size_t training_bits = (config->include_training != 0u) ? EXP001_TRAINING_BITS : 0u;
-    demod_bytes = exp001_fsk_demodulate_timed(
+    demod_bytes = exp001_fsk_demodulate_timed_at(
         samples + fsk_start,
         num_samples - fsk_start,
         training_bits,
+        fsk_f0, fsk_f1,
         header_and_payload,
         sizeof(header_and_payload),
         &result->estimated_symbol_phase,

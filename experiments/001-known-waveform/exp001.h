@@ -178,6 +178,15 @@ size_t exp001_fsk_modulate(
     float *out_samples,
     size_t out_capacity);
 
+/* As above, with an explicit tone pair. */
+size_t exp001_fsk_modulate_at(
+    const uint8_t *payload,
+    size_t payload_len,
+    double freq_0_hz,
+    double freq_1_hz,
+    float *out_samples,
+    size_t out_capacity);
+
 /*
  * Demodulate PCM samples with symbol timing acquisition.
  * Uses the known balanced training pattern to search for optimal symbol phase
@@ -188,6 +197,18 @@ size_t exp001_fsk_demodulate_timed(
     const float *samples,
     size_t num_samples,
     size_t training_bits,
+    uint8_t *out_payload,
+    size_t out_capacity,
+    double *estimated_phase_offset,
+    double *estimated_samples_per_symbol);
+
+/* As above, with an explicit tone pair. */
+size_t exp001_fsk_demodulate_timed_at(
+    const float *samples,
+    size_t num_samples,
+    size_t training_bits,
+    double freq_0_hz,
+    double freq_1_hz,
     uint8_t *out_payload,
     size_t out_capacity,
     double *estimated_phase_offset,
@@ -217,6 +238,15 @@ typedef struct {
     double silence_duration_s;      /* trailing silence */
     uint8_t include_training;       /* 1 = include FSK training sequence */
     double detection_threshold;     /* correlation magnitude threshold */
+    /*
+     * Optional FSK tone pair. Zero (the value a zeroed config carries) selects
+     * the Experiment 001 defaults of EXP001_FSK_FREQ_0 / EXP001_FSK_FREQ_1, so
+     * every existing caller and every retained result is unaffected. Non-zero
+     * values let a candidate profile occupy a measured band without altering
+     * the frozen Experiment 001 waveform.
+     */
+    double fsk_freq_0_hz;
+    double fsk_freq_1_hz;
 } exp001_frame_config_t;
 
 /*

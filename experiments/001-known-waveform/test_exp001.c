@@ -277,6 +277,7 @@ static void test_sro_receiver_timing_acquisition(void)
 
     mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
 
+    memset(&fconfig, 0, sizeof(fconfig));
     fconfig.preamble_type = EXP001_PREAMBLE_LFM_CHIRP;
     fconfig.preamble_duration_s = 0.1;
     fconfig.preamble_f_start_hz = 2000.0;
@@ -408,6 +409,7 @@ static void test_full_clean_pipeline(void)
 
         mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
 
+        memset(&fconfig, 0, sizeof(fconfig));
         fconfig.preamble_type = EXP001_PREAMBLE_LFM_CHIRP;
         fconfig.preamble_duration_s = 0.1;
         fconfig.preamble_f_start_hz = 2000.0;
@@ -464,6 +466,7 @@ static void test_expanded_impairments(void)
 
     mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
 
+    memset(&fconfig, 0, sizeof(fconfig));
     fconfig.preamble_type = EXP001_PREAMBLE_LFM_CHIRP;
     fconfig.preamble_duration_s = 0.1;
     fconfig.preamble_f_start_hz = 2000.0;
@@ -1077,6 +1080,25 @@ static void generate_e3_source_wav(void)
 
     printf("\n=== E3 Source WAV Generation ===\n");
 
+    /*
+     * The committed exp001_e3_source.wav is retained evidence: every E3 and E2
+     * result cites its SHA-256, and the trials in evidence/ are only meaningful
+     * against that exact file. Running this binary with the experiment
+     * directory as the working directory would otherwise silently overwrite it.
+     * Refuse instead; ctest runs from the build tree, where the file is absent
+     * and generation proceeds normally.
+     */
+    {
+        FILE *existing = fopen(path, "rb");
+        if (existing != NULL) {
+            fclose(existing);
+            printf("  exp001_e3_source.wav already exists here; refusing to\n"
+                   "  overwrite retained evidence. Delete it deliberately to\n"
+                   "  regenerate.\n");
+            return;
+        }
+    }
+
     memset(&obj, 0, sizeof(obj));
     obj.kind = MCL_WIRE_KIND_PRESENCE;
     obj.priority = 1u;
@@ -1087,6 +1109,7 @@ static void generate_e3_source_wav(void)
 
     mcl_wire_tier0_encode(&obj, wire_buf, sizeof(wire_buf), &wire_written);
 
+    memset(&fconfig, 0, sizeof(fconfig));
     fconfig.preamble_type = EXP001_PREAMBLE_LFM_CHIRP;
     fconfig.preamble_duration_s = 0.20;
     fconfig.preamble_f_start_hz = 2000.0;

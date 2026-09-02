@@ -97,6 +97,17 @@ if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
 
+    # Experiment 003 evaluates an AP-B0 candidate whose tone pair comes from
+    # the Experiment 002 measurement. Same frame, preamble and receiver as
+    # Experiment 001; only the band differs.
+    add_executable(mcl_ap_exp003
+        experiments/003-band-informed-candidate/exp003.c)
+    target_link_libraries(mcl_ap_exp003 PRIVATE mcl_ap_exp001)
+    set_target_properties(mcl_ap_exp003 PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
     if(MCL_AP_BUILD_TESTS)
         add_test(NAME mcl_ap_exp001_unit COMMAND mcl_ap_exp001_test)
         add_test(

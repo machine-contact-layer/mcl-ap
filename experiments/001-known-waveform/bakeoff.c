@@ -175,6 +175,7 @@ static void eval_candidate_scenario(
         uint8_t rx_payload[EXP001_MAX_PAYLOAD_BYTES];
         exp001_status_t st;
 
+        memset(&fconfig, 0, sizeof(fconfig));
         fconfig.preamble_type = type;
         fconfig.preamble_duration_s = dur;
         fconfig.preamble_f_start_hz = 2000.0;
