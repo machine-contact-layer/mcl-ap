@@ -87,6 +87,16 @@ if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
 
+    # Experiment 002 reuses the Experiment 001 WAV I/O and shares its
+    # LAB/EXPERIMENTAL status. It is a measurement instrument, not a modem.
+    add_executable(mcl_ap_exp002_sweep
+        experiments/002-path-characterization/exp002_sweep.c)
+    target_link_libraries(mcl_ap_exp002_sweep PRIVATE mcl_ap_exp001)
+    set_target_properties(mcl_ap_exp002_sweep PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
     if(MCL_AP_BUILD_TESTS)
         add_test(NAME mcl_ap_exp001_unit COMMAND mcl_ap_exp001_test)
         add_test(

@@ -37,7 +37,26 @@ Required outputs:
 - sample-clock/frequency offset
 - clipping/nonlinearity indicators
 
-## Experiment 002 — frequency-diverse bootstrap
+## Experiment 002 — real path characterization and frequency-diverse bootstrap
+
+Two parts. Part A is implemented and has a first result; part B is not started.
+
+### Part A — real transducer path characterization (IMPLEMENTED)
+
+Measure the frequency response of an actual speaker → air → microphone pair with a
+stepped-tone probe, so band and profile choices come from measurement rather than intuition.
+There is no universal speaker/microphone curve, so every claim here is scoped to one measured
+device pair and one direction.
+
+Implementation and evidence: `002-path-characterization/`.
+
+First result (2026-09-02, laptop Realtek speaker → DFR1154 PDM microphone, 3 captures):
+the Experiment 001 FSK pair straddles a notch — the 5 kHz mark tone measures 19–21 dB below
+the 3 kHz space tone, while 5500/6000/8000/9000 Hz all sit at or above the 3 kHz reference and
+9 kHz measures 10–12 dB stronger. This explains the residual 2/10 E3 payload failures and
+shows they are a band-selection artifact rather than a limit of the path.
+
+### Part B — frequency-diverse bootstrap (NOT STARTED)
 
 Compare:
 
@@ -47,14 +66,8 @@ Compare:
 - chirp-assisted acquisition
 - erasure-tolerant tile identity
 
-Metrics:
-
-- acquisition probability
-- false alarm rate
-- time to acquisition
-- band-erasure tolerance
-- SNR/noise sensitivity
-- device-pair coverage
+Bootstrap candidates must be evaluated under equal resources on measured paths, using the
+part A characterization as input, not on assumed spectrum.
 
 ## Experiment 003 — profile convergence
 

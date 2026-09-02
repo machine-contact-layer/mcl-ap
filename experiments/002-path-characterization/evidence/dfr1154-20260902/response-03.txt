@@ -1,0 +1,33 @@
+﻿mcl_ap_exp002_sweep.exe : marker at 5306 (metric 0.7049)
+At line:1 char:964
++ ... 02','03')){ & $exe anal "$sp\capture-$i.wav" > "$sp\response-$i.txt"  ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (marker at 5306 (metric 0.7049):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+removed DC offset 0.033062
+capture=C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\002-path-characterization\evidence\dfr1154-20260902\capture-03.wav samples=144000 base=15386 noise_rms=0.000319
+
+   tone_Hz   level_dB   rel_3kHz_dB   snr_dB
+       300     -61.63        -22.97     8.30
+       500     -45.24         -6.58    24.69
+       700     -45.42         -6.76    24.51
+      1000     -43.53         -4.88    26.40
+      1300     -33.54          5.12    36.39
+      1600     -42.74         -4.08    27.19
+      2000     -39.06         -0.40    30.87
+      2400     -39.24         -0.59    30.68
+      2800     -39.38         -0.72    30.55
+      3000     -38.66          0.00    31.27   <== current FSK
+      3400     -41.25         -2.59    28.68
+      3800     -46.59         -7.93    23.34
+      4200     -57.92        -19.26    12.01
+      4600     -50.53        -11.88    19.39
+      5000     -57.72        -19.06    12.21   <== current FSK
+      5500     -41.09         -2.43    28.84
+      6000     -37.18          1.47    32.75
+      7000     -37.70          0.96    32.23
+      8000     -28.16         10.50    41.77
+      9000     -26.14         12.52    43.79
+     10000     -35.35          3.31    34.58
+     12000    -122.85        -84.19   -52.92
