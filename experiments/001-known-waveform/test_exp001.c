@@ -11,7 +11,9 @@
  *   7. Symbol timing acquisition under SRO (-500 to +500 ppm)
  *   8. Full clean-channel Wire -> Acoustic -> Wire pipeline (all 6 Tier-0 kinds)
  *   9. Expanded impairments: colored noise, 2-path, 5-path, band attenuation, combined
- *  10. E3 source WAV generator with training sequence
+ *  10. DC offset and unequal FSK channel-response compensation
+ *  11. Fractional symbol timing under a degraded channel
+ *  12. E3 source WAV generator with training sequence
  */
 
 #ifndef _CRT_SECURE_NO_WARNINGS
@@ -31,6 +33,7 @@ static int tests_passed = 0;
 #define PCM_BUF_SIZE 960000u
 static float g_pcm_a[PCM_BUF_SIZE];
 static float g_pcm_b[PCM_BUF_SIZE];
+static float g_pcm_c[PCM_BUF_SIZE];
 
 #define TEST(name) do { \
     printf("  [TEST] %s ... ", #name); \
@@ -566,6 +569,153 @@ static void test_expanded_impairments(void)
     }
 }
 
+/* ========== Test 10: Receiver DC and FSK Channel-Bias Compensation ========== */
+
+static void test_receiver_channel_bias_compensation(void)
+{
+    mcl_wire_tier0_t src_obj;
+    uint8_t wire_buf[MCL_WIRE_TIER0_MAX_SIZE];
+    uint8_t recovered[MCL_WIRE_TIER0_MAX_SIZE];
+    size_t wire_written = 0u;
+    size_t frame_samples;
+    size_t i;
+    exp001_frame_config_t fconfig;
+    exp001_decode_result_t decode_res;
+    exp001_status_t st;
+
+    TEST(receiver_dc_and_fsk_bias_compensation);
+
+    memset(&src_obj, 0, sizeof(src_obj));
+    src_obj.kind = MCL_WIRE_KIND_PRESENCE;
+    src_obj.priority = 1u;
+    src_obj.source_ref = 1u;
+    src_obj.body.presence.machine_class = 1u;
+    src_obj.body.presence.capability_digest = 1u;
+    src_obj.body.presence.ttl = 60u;
+    mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
+
+    memset(&fconfig, 0, sizeof(fconfig));
+    fconfig.preamble_type = EXP001_PREAMBLE_LFM_CHIRP;
+    fconfig.preamble_duration_s = 0.20;
+    fconfig.preamble_f_start_hz = 2000.0;
+    fconfig.preamble_f_end_hz = 6000.0;
+    fconfig.leading_silence_s = 0.10;
+    fconfig.silence_duration_s = 0.50;
+    fconfig.include_training = 1u;
+    fconfig.detection_threshold = 0.40;
+
+    frame_samples = exp001_frame_encode(&fconfig, wire_buf, wire_written,
+                                        g_pcm_a, PCM_BUF_SIZE, NULL);
+    if (frame_samples == 0u) FAIL("frame encode failed");
+
+    st = exp001_apply_notch_filter(g_pcm_a, frame_samples,
+                                   EXP001_FSK_FREQ_1, 1200.0, -12.0, g_pcm_b);
+    if (st != EXP001_OK) FAIL("5 kHz attenuation filter failed");
+    for (i = 0u; i < frame_samples; ++i) {
+        g_pcm_b[i] += 0.25f;
+    }
+
+    st = exp001_frame_decode(&fconfig, g_pcm_b, frame_samples,
+                             recovered, sizeof(recovered), &decode_res);
+    if (st != EXP001_OK || decode_res.crc_valid == 0u) {
+        FAIL("DC-offset/channel-biased frame decode failed");
+    }
+    if (decode_res.payload_bytes != wire_written ||
+        memcmp(recovered, wire_buf, wire_written) != 0) {
+        FAIL("DC-offset/channel-biased payload mismatch");
+    }
+    PASS();
+}
+
+/* ========== Test 11: Fractional Symbol Timing Under a Degraded Channel ==========
+ *
+ * Combined-stress coverage that no existing test provided: the SRO test drives
+ * samples-per-symbol off an integer but keeps a clean high-margin channel,
+ * while the channel-bias test squeezes the decision margin but leaves the
+ * symbol rate at exactly 160. A physical capture always presents both at once,
+ * because independent transmit and receive clocks make the symbol rate
+ * fractional while the transducer response collapses the two FSK hypotheses
+ * together.
+ *
+ * Scope note: this is a robustness test, NOT a regression guard for the
+ * symbol-boundary rounding change in exp001.c. That change was measured on the
+ * 2026-09-02 DFR1154 capture (clean operating points 98 -> 103 of 205 swept
+ * phase/rate combinations) and is justified on discretization grounds, but it
+ * is a sub-sample effect that a synthetic frame does not reliably reproduce:
+ * this test passes under both truncation and rounding. Do not cite it as
+ * evidence for that change.
+ */
+
+static void test_fractional_timing_degraded_channel(void)
+{
+    /* Negative offsets drive the estimate below nominal, where truncation of
+     * the window length loses a whole sample. */
+    const double ppms[] = { -500.0, -250.0, -100.0, 100.0, 250.0, 500.0 };
+    unsigned p;
+    mcl_wire_tier0_t src_obj;
+    uint8_t wire_buf[MCL_WIRE_TIER0_MAX_SIZE];
+    uint8_t recovered[MCL_WIRE_TIER0_MAX_SIZE];
+    size_t wire_written = 0u;
+    size_t frame_samples, resampled_samples;
+    size_t i;
+    exp001_frame_config_t fconfig;
+    exp001_decode_result_t decode_res;
+    exp001_status_t st;
+
+    memset(&src_obj, 0, sizeof(src_obj));
+    src_obj.kind = MCL_WIRE_KIND_PRESENCE;
+    src_obj.priority = 1u;
+    src_obj.source_ref = 1u;
+    src_obj.body.presence.machine_class = 1u;
+    src_obj.body.presence.capability_digest = 1u;
+    src_obj.body.presence.ttl = 60u;
+    mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
+
+    memset(&fconfig, 0, sizeof(fconfig));
+    fconfig.preamble_type = EXP001_PREAMBLE_LFM_CHIRP;
+    fconfig.preamble_duration_s = 0.20;
+    fconfig.preamble_f_start_hz = 2000.0;
+    fconfig.preamble_f_end_hz = 6000.0;
+    fconfig.leading_silence_s = 0.10;
+    fconfig.silence_duration_s = 0.50;
+    fconfig.include_training = 1u;
+    fconfig.detection_threshold = 0.40;
+
+    frame_samples = exp001_frame_encode(&fconfig, wire_buf, wire_written,
+                                        g_pcm_a, PCM_BUF_SIZE, NULL);
+    if (frame_samples == 0u) return;
+
+    for (p = 0u; p < sizeof(ppms) / sizeof(ppms[0]); ++p) {
+        TEST(fractional_timing_degraded_channel);
+        printf("(ppm=%+6.0f) ... ", ppms[p]);
+
+        /* Transducer response: attenuate the 5 kHz mark tone, matching the
+         * -12.4 dB imbalance measured on the DFR1154 PDM microphone. */
+        st = exp001_apply_notch_filter(g_pcm_a, frame_samples,
+                                       EXP001_FSK_FREQ_1, 1200.0, -12.0, g_pcm_b);
+        if (st != EXP001_OK) FAIL("5 kHz attenuation filter failed");
+        for (i = 0u; i < frame_samples; ++i) {
+            g_pcm_b[i] += 0.25f;   /* PDM microphone DC component */
+        }
+
+        /* Independent clocks: drive the symbol rate off an integer. */
+        st = exp001_resample_sro(g_pcm_b, frame_samples, ppms[p],
+                                 g_pcm_c, PCM_BUF_SIZE, &resampled_samples);
+        if (st != EXP001_OK) FAIL("SRO resample failed");
+
+        st = exp001_frame_decode(&fconfig, g_pcm_c, resampled_samples,
+                                 recovered, sizeof(recovered), &decode_res);
+        if (st != EXP001_OK || decode_res.crc_valid == 0u) {
+            FAIL("fractional-timing degraded-channel decode failed");
+        }
+        if (decode_res.payload_bytes != wire_written ||
+            memcmp(recovered, wire_buf, wire_written) != 0) {
+            FAIL("fractional-timing degraded-channel payload mismatch");
+        }
+        PASS();
+    }
+}
+
 /* ========== Test: AWGN Measured Power & SNR Verification ========== */
 
 static void test_awgn_measured_power_levels(void)
@@ -983,6 +1133,12 @@ int main(void)
 
     printf("\n--- Expanded Deterministic Impairments ---\n");
     test_expanded_impairments();
+
+    printf("\n--- Receiver Front-End Compensation ---\n");
+    test_receiver_channel_bias_compensation();
+
+    printf("\n--- Fractional Symbol Timing Under Degraded Channel ---\n");
+    test_fractional_timing_degraded_channel();
 
     printf("\n--- Measured AWGN Power Tests (30, 20, 10, 5, 0 dB) ---\n");
     test_awgn_measured_power_levels();

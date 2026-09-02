@@ -152,7 +152,7 @@ typedef struct {
 } exp001_preamble_detect_t;
 
 /*
- * Cross-correlation preamble acquisition using magnitude / quadrature metric:
+ * Zero-mean cross-correlation preamble acquisition using magnitude / quadrature metric:
  *   rho[k] = sqrt(corr_I[k]^2 + corr_Q[k]^2) / sqrt(E_ref * E_sig[k])
  *
  * Insensitive to polarity inversion and arbitrary carrier phase.
@@ -180,8 +180,9 @@ size_t exp001_fsk_modulate(
 
 /*
  * Demodulate PCM samples with symbol timing acquisition.
- * Uses known training pattern to search for optimal symbol phase offset
- * and effective samples-per-symbol before demodulating payload.
+ * Uses the known balanced training pattern to search for optimal symbol phase
+ * and effective samples-per-symbol, then estimates a log-energy decision bias
+ * that compensates unequal channel response at the two FSK frequencies.
  */
 size_t exp001_fsk_demodulate_timed(
     const float *samples,

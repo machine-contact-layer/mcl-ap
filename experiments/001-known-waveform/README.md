@@ -86,7 +86,28 @@ cl /std:c11 /W4 /O2 /D_CRT_SECURE_NO_WARNINGS ^
 4. Feed captured WAV to the offline decoder
 5. If recovered Wire bytes match source exactly: **E3 achieved**
 
-The first same-laptop attempt on 2026-09-02 did **not** achieve exact recovery. The retained raw captures, control, hashes, and failure boundary are under `evidence/e3-laptop-20260902/`. A follow-up frequency-response measurement and five additional fixed-source captures, including operator-reported Nahimic-disabled and microphone-boosted conditions, are under `evidence/calibration-followup-20260902/`. They also failed exact recovery. These negative results must not be reported as E3 success.
+### E3 status: ACHIEVED 2026-09-02 (8/10)
+
+The first over-air recovery of an exact MCL frame was obtained on 2026-09-02 using the
+laptop speaker as transmitter and the DFR1154 ESP32-S3 onboard PDM microphone as receiver.
+Ten trials against the frozen receiver gave 10/10 preamble acquisition, 10/10 PHY header
+recovery, and **8/10 exact Wire bytes plus exact PRESENCE semantic object**; a 3-trial pilot
+under identical conditions gave 3/3. Evidence, per-trial results, and SHA-256 manifests:
+`evidence/e3-dfr1154-20260902-frozen-rx/` and `-frozen-rx-pilot/`.
+
+Both failures acquired cleanly and decoded every PHY header bit correctly, failing only on
+payload symbols. The measured cause is transducer response: the PDM microphone attenuates
+the 5 kHz mark tone by roughly 12.4 dB relative to the 3 kHz space tone, leaving about 0.3
+of log-energy decision margin on end-of-frame symbols. Raising that margin is the next AP
+problem and is exactly what AP-B0 selection must answer with evidence.
+
+Earlier negative results are retained and must not be reported as E3 success: the
+same-laptop Realtek speaker/microphone attempts under `evidence/e3-laptop-20260902/`, the
+follow-up frequency-response measurement and five fixed-source captures (including
+Nahimic-disabled and microphone-boosted conditions) under
+`evidence/calibration-followup-20260902/`, and the earlier DFR1154 captures under
+`evidence/e3-dfr1154-20260902/`. The last of those does now decode exactly, but only through
+a receiver changed after it was recorded, which makes it E2 replay evidence rather than E3.
 
 ## Impairment Harness
 

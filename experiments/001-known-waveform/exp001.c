@@ -329,6 +329,9 @@ exp001_preamble_detect_t exp001_detect_preamble_iq(
     float ref_q[EXP001_PREAMBLE_MAX_SAMPLES];
     size_t ref_len;
     double ref_energy = 0.0;
+    double ref_i_mean = 0.0;
+    double ref_q_mean = 0.0;
+    double signal_sum = 0.0;
     size_t best_offset = 0u;
     double best_mag = -1.0;
     size_t offset, i;
@@ -345,9 +348,20 @@ exp001_preamble_detect_t exp001_detect_preamble_iq(
         return result;
     }
 
-    /* Reference energy E_ref = sum(ref_i^2) */
+    /* Remove constant microphone bias from both the reference and each
+     * candidate window. PDM microphones commonly have a substantial DC
+     * component which must not dilute the normalized acquisition metric. */
     for (i = 0u; i < ref_len; ++i) {
-        ref_energy += (double)ref_i[i] * (double)ref_i[i];
+        ref_i_mean += (double)ref_i[i];
+        ref_q_mean += (double)ref_q[i];
+        signal_sum += (double)samples[i];
+    }
+    ref_i_mean /= (double)ref_len;
+    ref_q_mean /= (double)ref_len;
+    for (i = 0u; i < ref_len; ++i) {
+        double centered_i = (double)ref_i[i] - ref_i_mean;
+        double centered_q = (double)ref_q[i] - ref_q_mean;
+        ref_energy += 0.5 * (centered_i * centered_i + centered_q * centered_q);
     }
     if (ref_energy <= 0.0) {
         ref_energy = 1.0;
@@ -358,11 +372,12 @@ exp001_preamble_detect_t exp001_detect_preamble_iq(
         double corr_i = 0.0;
         double corr_q = 0.0;
         double sig_energy = 0.0;
+        double signal_mean = signal_sum / (double)ref_len;
 
         for (i = 0u; i < ref_len; ++i) {
-            double s = (double)samples[offset + i];
-            corr_i += (double)ref_i[i] * s;
-            corr_q += (double)ref_q[i] * s;
+            double s = (double)samples[offset + i] - signal_mean;
+            corr_i += ((double)ref_i[i] - ref_i_mean) * s;
+            corr_q += ((double)ref_q[i] - ref_q_mean) * s;
             sig_energy += s * s;
         }
 
@@ -375,6 +390,11 @@ exp001_preamble_detect_t exp001_detect_preamble_iq(
         if (mag > best_mag) {
             best_mag = mag;
             best_offset = offset;
+        }
+
+        if (offset < num_samples - ref_len) {
+            signal_sum -= (double)samples[offset];
+            signal_sum += (double)samples[offset + ref_len];
         }
     }
 
@@ -445,6 +465,21 @@ static double goertzel_power(const float *samples, size_t n, double target_freq_
     return s_prev * s_prev + s_prev2 * s_prev2 - coeff * s_prev * s_prev2;
 }
 
+/*
+ * Discretize a fractional symbol boundary to a sample index.
+ *
+ * The symbol timing search produces a non-integer samples-per-symbol estimate
+ * whenever the transmit and receive clocks differ, which is always true for a
+ * physical capture. Truncating each boundary would bias every symbol window
+ * systematically early and shorten every window by up to one sample; those
+ * errors are invisible for a synthetic integer-rate frame but corrupt the
+ * weakest symbols of a real one. Round to nearest instead.
+ */
+static size_t symbol_index(double t)
+{
+    return (size_t)floor(t + 0.5);
+}
+
 size_t exp001_fsk_demodulate_timed(
     const float *samples,
     size_t num_samples,
@@ -455,6 +490,7 @@ size_t exp001_fsk_demodulate_timed(
     double *estimated_samples_per_symbol)
 {
     const size_t nominal_sps = EXP001_SAMPLE_RATE / EXP001_FSK_BAUD;
+    const double power_floor = 1e-30;
     double best_score = -1e30;
     int best_phase = 0;
     double best_sps = (double)nominal_sps;
@@ -482,23 +518,20 @@ size_t exp001_fsk_demodulate_timed(
 
                 for (b = 0u; b < training_bits; ++b) {
                     double t0 = (double)phase_try + (double)b * sps_try;
-                    if (t0 < 0.0 || (size_t)(t0 + sps_try) > num_samples) {
+                    size_t start_idx = symbol_index(t0);
+                    size_t win_len = symbol_index(sps_try);
+                    if (t0 < 0.0 || start_idx + win_len > num_samples) {
                         score -= 1e6;
                         continue;
                     }
 
-                    size_t start_idx = (size_t)t0;
-                    size_t win_len = (size_t)sps_try;
                     double p0 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_0);
                     double p1 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_1);
 
                     /* Expected training bit: 01010101 pattern (b & 1) */
                     uint8_t expected = (uint8_t)(b & 1u);
-                    if (expected == 0u) {
-                        score += (p0 - p1);
-                    } else {
-                        score += (p1 - p0);
-                    }
+                    double log_ratio = log(p1 + power_floor) - log(p0 + power_floor);
+                    score += (expected == 0u) ? -log_ratio : log_ratio;
                 }
 
                 if (score > best_score) {
@@ -517,15 +550,50 @@ size_t exp001_fsk_demodulate_timed(
         *estimated_samples_per_symbol = best_sps;
     }
 
-    /*
-     * 2. Demodulate payload symbols using acquired timing.
-     */
+    /* Estimate the channel's frequency-response bias from equal counts of
+     * known 0 and 1 training symbols. Classification in log-energy space then
+     * remains centered even when one FSK tone is strongly attenuated. */
+    double decision_bias = 0.0;
+    if (training_bits > 0u) {
+        double ratio_sum_0 = 0.0;
+        double ratio_sum_1 = 0.0;
+        size_t ratio_count_0 = 0u;
+        size_t ratio_count_1 = 0u;
+        size_t b;
+
+        for (b = 0u; b < training_bits; ++b) {
+            double t0 = (double)best_phase + (double)b * best_sps;
+            size_t start_idx = symbol_index(t0);
+            size_t win_len = symbol_index(best_sps);
+            if (t0 < 0.0 || start_idx + win_len > num_samples) {
+                continue;
+            }
+            double p0 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_0);
+            double p1 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_1);
+            double log_ratio = log(p1 + power_floor) - log(p0 + power_floor);
+
+            if ((b & 1u) == 0u) {
+                ratio_sum_0 += log_ratio;
+                ratio_count_0++;
+            } else {
+                ratio_sum_1 += log_ratio;
+                ratio_count_1++;
+            }
+        }
+        if (ratio_count_0 > 0u && ratio_count_1 > 0u) {
+            decision_bias = 0.5 *
+                (ratio_sum_0 / (double)ratio_count_0 +
+                 ratio_sum_1 / (double)ratio_count_1);
+        }
+    }
+
+    /* 2. Demodulate payload symbols using acquired timing and channel bias. */
     double payload_start_t = (double)best_phase + (double)training_bits * best_sps;
     if (payload_start_t < 0.0 || (size_t)payload_start_t >= num_samples) {
         return 0u;
     }
 
-    size_t remaining_samples = num_samples - (size_t)payload_start_t;
+    size_t remaining_samples = num_samples - symbol_index(payload_start_t);
     size_t total_bits = (size_t)((double)remaining_samples / best_sps);
     total_payload_bytes = total_bits / 8u;
 
@@ -541,8 +609,8 @@ size_t exp001_fsk_demodulate_timed(
 
     for (bit_idx = 0u; bit_idx < total_bits; ++bit_idx) {
         double t0 = payload_start_t + (double)bit_idx * best_sps;
-        size_t start_idx = (size_t)t0;
-        size_t win_len = (size_t)best_sps;
+        size_t start_idx = symbol_index(t0);
+        size_t win_len = symbol_index(best_sps);
 
         if (start_idx + win_len > num_samples) {
             break;
@@ -551,7 +619,8 @@ size_t exp001_fsk_demodulate_timed(
         double p0 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_0);
         double p1 = goertzel_power(samples + start_idx, win_len, EXP001_FSK_FREQ_1);
 
-        if (p1 > p0) {
+        double log_ratio = log(p1 + power_floor) - log(p0 + power_floor);
+        if (log_ratio > decision_bias) {
             size_t byte_idx = bit_idx / 8u;
             unsigned bit_pos = 7u - (unsigned)(bit_idx % 8u);
             out_payload[byte_idx] |= (uint8_t)(1u << bit_pos);

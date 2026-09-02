@@ -1,0 +1,7 @@
+# Arduino / ESP-IDF build output for the DFR1154 capture instrument.
+# The sketch is the source of record; the compiled ELF, map and images are not.
+experiments/001-known-waveform/hardware/**/build/
+
+# CMake build trees
+build/
+out/
