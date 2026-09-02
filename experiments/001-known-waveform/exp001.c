@@ -729,6 +729,7 @@ exp001_status_t exp001_frame_decode(
     }
 
     payload_len = header_and_payload[0];
+    result->payload_bytes = payload_len;
     rx_crc = (uint16_t)(((uint16_t)header_and_payload[1] << 8u) | (uint16_t)header_and_payload[2]);
     result->received_crc = rx_crc;
 
@@ -740,7 +741,6 @@ exp001_status_t exp001_frame_decode(
     }
 
     memcpy(out_payload, header_and_payload + 3, payload_len);
-    result->payload_bytes = payload_len;
     result->payload_start_sample = fsk_start;
 
     /* 3. CRC integrity verification */
@@ -757,37 +757,43 @@ exp001_status_t exp001_frame_decode(
 
 /* ========== WAV I/O ========== */
 
-static void wav_write_u16(FILE *f, uint16_t v)
+static int wav_write_u16(FILE *f, uint16_t v)
 {
     uint8_t b[2];
     b[0] = (uint8_t)(v & 0xFFu);
     b[1] = (uint8_t)((v >> 8u) & 0xFFu);
-    fwrite(b, 1, 2, f);
+    return fwrite(b, 1u, sizeof(b), f) == sizeof(b) ? 0 : -1;
 }
 
-static void wav_write_u32(FILE *f, uint32_t v)
+static int wav_write_u32(FILE *f, uint32_t v)
 {
     uint8_t b[4];
     b[0] = (uint8_t)(v & 0xFFu);
     b[1] = (uint8_t)((v >> 8u) & 0xFFu);
     b[2] = (uint8_t)((v >> 16u) & 0xFFu);
     b[3] = (uint8_t)((v >> 24u) & 0xFFu);
-    fwrite(b, 1, 4, f);
+    return fwrite(b, 1u, sizeof(b), f) == sizeof(b) ? 0 : -1;
 }
 
-static uint16_t wav_read_u16(FILE *f)
+static int wav_read_u16(FILE *f, uint16_t *value)
 {
     uint8_t b[2];
-    fread(b, 1, 2, f);
-    return (uint16_t)((uint16_t)b[0] | ((uint16_t)b[1] << 8u));
+    if (fread(b, 1u, sizeof(b), f) != sizeof(b)) {
+        return -1;
+    }
+    *value = (uint16_t)((uint16_t)b[0] | ((uint16_t)b[1] << 8u));
+    return 0;
 }
 
-static uint32_t wav_read_u32(FILE *f)
+static int wav_read_u32(FILE *f, uint32_t *value)
 {
     uint8_t b[4];
-    fread(b, 1, 4, f);
-    return (uint32_t)b[0] | ((uint32_t)b[1] << 8u) |
-           ((uint32_t)b[2] << 16u) | ((uint32_t)b[3] << 24u);
+    if (fread(b, 1u, sizeof(b), f) != sizeof(b)) {
+        return -1;
+    }
+    *value = (uint32_t)b[0] | ((uint32_t)b[1] << 8u) |
+             ((uint32_t)b[2] << 16u) | ((uint32_t)b[3] << 24u);
+    return 0;
 }
 
 exp001_status_t exp001_wav_write(
@@ -808,7 +814,8 @@ exp001_status_t exp001_wav_write(
     if (path == NULL || samples == NULL || num_samples == 0u) {
         return EXP001_ERR_INVALID_ARGUMENT;
     }
-    if (bits_per_sample != 16u) {
+    if (bits_per_sample != 16u || channels != 1u ||
+        num_samples > (size_t)(UINT32_MAX / 2u)) {
         return EXP001_ERR_INVALID_ARGUMENT;
     }
 
@@ -822,21 +829,22 @@ exp001_status_t exp001_wav_write(
     block_align = (uint16_t)(channels * (bits_per_sample / 8u));
     byte_rate = sample_rate * (uint32_t)block_align;
 
-    fwrite("RIFF", 1, 4, f);
-    wav_write_u32(f, file_size);
-    fwrite("WAVE", 1, 4, f);
-
-    fwrite("fmt ", 1, 4, f);
-    wav_write_u32(f, 16u);
-    wav_write_u16(f, 1u);
-    wav_write_u16(f, channels);
-    wav_write_u32(f, sample_rate);
-    wav_write_u32(f, byte_rate);
-    wav_write_u16(f, block_align);
-    wav_write_u16(f, bits_per_sample);
-
-    fwrite("data", 1, 4, f);
-    wav_write_u32(f, data_size);
+    if (fwrite("RIFF", 1u, 4u, f) != 4u ||
+        wav_write_u32(f, file_size) != 0 ||
+        fwrite("WAVE", 1u, 4u, f) != 4u ||
+        fwrite("fmt ", 1u, 4u, f) != 4u ||
+        wav_write_u32(f, 16u) != 0 ||
+        wav_write_u16(f, 1u) != 0 ||
+        wav_write_u16(f, channels) != 0 ||
+        wav_write_u32(f, sample_rate) != 0 ||
+        wav_write_u32(f, byte_rate) != 0 ||
+        wav_write_u16(f, block_align) != 0 ||
+        wav_write_u16(f, bits_per_sample) != 0 ||
+        fwrite("data", 1u, 4u, f) != 4u ||
+        wav_write_u32(f, data_size) != 0) {
+        fclose(f);
+        return EXP001_ERR_FILE_IO;
+    }
 
     for (i = 0u; i < num_samples; ++i) {
         double clamped = (double)samples[i];
@@ -846,10 +854,15 @@ exp001_status_t exp001_wav_write(
         if (clamped < -1.0) clamped = -1.0;
 
         pcm_val = (int16_t)(clamped * 32767.0);
-        wav_write_u16(f, (uint16_t)pcm_val);
+        if (wav_write_u16(f, (uint16_t)pcm_val) != 0) {
+            fclose(f);
+            return EXP001_ERR_FILE_IO;
+        }
     }
 
-    fclose(f);
+    if (fclose(f) != 0) {
+        return EXP001_ERR_FILE_IO;
+    }
     return EXP001_OK;
 }
 
@@ -887,7 +900,10 @@ exp001_status_t exp001_wav_read(
         fclose(f);
         return EXP001_ERR_WAV_FORMAT;
     }
-    file_size = wav_read_u32(f);
+    if (wav_read_u32(f, &file_size) != 0) {
+        fclose(f);
+        return EXP001_ERR_WAV_FORMAT;
+    }
     (void)file_size;
 
     if (fread(chunk_id, 1, 4, f) != 4 || memcmp(chunk_id, "WAVE", 4) != 0) {
@@ -897,19 +913,30 @@ exp001_status_t exp001_wav_read(
 
     /* Loop over RIFF chunks until data is read or EOF */
     while (fread(chunk_id, 1, 4, f) == 4) {
-        uint32_t chunk_len = wav_read_u32(f);
+        uint32_t chunk_len;
+        if (wav_read_u32(f, &chunk_len) != 0) {
+            fclose(f);
+            return EXP001_ERR_WAV_FORMAT;
+        }
 
         if (memcmp(chunk_id, "fmt ", 4) == 0) {
+            uint32_t byte_rate;
+            uint16_t block_align;
             if (fmt_seen != 0 || chunk_len < 16u) {
                 fclose(f);
                 return EXP001_ERR_WAV_FORMAT;
             }
-            audio_format = wav_read_u16(f);
-            chans = wav_read_u16(f);
-            srate = wav_read_u32(f);
-            wav_read_u32(f); /* byte_rate */
-            wav_read_u16(f); /* block_align */
-            bits = wav_read_u16(f);
+            if (wav_read_u16(f, &audio_format) != 0 ||
+                wav_read_u16(f, &chans) != 0 ||
+                wav_read_u32(f, &srate) != 0 ||
+                wav_read_u32(f, &byte_rate) != 0 ||
+                wav_read_u16(f, &block_align) != 0 ||
+                wav_read_u16(f, &bits) != 0) {
+                fclose(f);
+                return EXP001_ERR_WAV_FORMAT;
+            }
+            (void)byte_rate;
+            (void)block_align;
 
             /* Reject unsupported formats explicitly: must be PCM 16-bit mono 48 kHz */
             if (audio_format != 1u || bits != 16u || chans != 1u) {
@@ -918,10 +945,16 @@ exp001_status_t exp001_wav_read(
             }
 
             if (chunk_len > 16u) {
-                fseek(f, (long)(chunk_len - 16u), SEEK_CUR);
+                if (fseek(f, (long)(chunk_len - 16u), SEEK_CUR) != 0) {
+                    fclose(f);
+                    return EXP001_ERR_WAV_FORMAT;
+                }
             }
             if ((chunk_len & 1u) != 0u) {
-                fseek(f, 1, SEEK_CUR); /* padding byte */
+                if (fseek(f, 1, SEEK_CUR) != 0) {
+                    fclose(f);
+                    return EXP001_ERR_WAV_FORMAT;
+                }
             }
 
             if (sample_rate != NULL) *sample_rate = srate;
@@ -933,6 +966,10 @@ exp001_status_t exp001_wav_read(
                 fclose(f);
                 return EXP001_ERR_WAV_FORMAT;
             }
+            if ((chunk_len & 1u) != 0u) {
+                fclose(f);
+                return EXP001_ERR_WAV_FORMAT;
+            }
             data_seen = 1;
             num_samples = chunk_len / 2u; /* 16-bit mono = 2 bytes per sample */
             if (num_samples > out_capacity) {
@@ -940,7 +977,13 @@ exp001_status_t exp001_wav_read(
             }
 
             for (i = 0u; i < num_samples; ++i) {
-                int16_t pcm_val = (int16_t)wav_read_u16(f);
+                uint16_t pcm_u16;
+                int16_t pcm_val;
+                if (wav_read_u16(f, &pcm_u16) != 0) {
+                    fclose(f);
+                    return EXP001_ERR_WAV_FORMAT;
+                }
+                pcm_val = (int16_t)pcm_u16;
                 out_samples[i] = (float)pcm_val / 32768.0f;
             }
 
@@ -956,7 +999,9 @@ exp001_status_t exp001_wav_read(
         }
     }
 
-    fclose(f);
+    if (fclose(f) != 0) {
+        return EXP001_ERR_FILE_IO;
+    }
 
     if (fmt_seen == 0 || data_seen == 0) {
         return EXP001_ERR_WAV_FORMAT;

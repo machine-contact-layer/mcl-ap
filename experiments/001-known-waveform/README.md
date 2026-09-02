@@ -86,6 +86,8 @@ cl /std:c11 /W4 /O2 /D_CRT_SECURE_NO_WARNINGS ^
 4. Feed captured WAV to the offline decoder
 5. If recovered Wire bytes match source exactly: **E3 achieved**
 
+The first same-laptop attempt on 2026-09-02 did **not** achieve exact recovery. The retained raw captures, control, hashes, and failure boundary are under `evidence/e3-laptop-20260902/`. A follow-up frequency-response measurement and five additional fixed-source captures, including operator-reported Nahimic-disabled and microphone-boosted conditions, are under `evidence/calibration-followup-20260902/`. They also failed exact recovery. These negative results must not be reported as E3 success.
+
 ## Impairment Harness
 
 Deterministic impairments for controlled testing:

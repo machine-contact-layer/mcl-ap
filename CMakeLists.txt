@@ -9,6 +9,9 @@ set(MCL_WIRE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-wire" CACHE PATH "Path to m
 add_library(mcl_ap_channel STATIC
     src/ap_channel.c)
 target_include_directories(mcl_ap_channel PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(NOT WIN32)
+    target_link_libraries(mcl_ap_channel PUBLIC m)
+endif()
 set_target_properties(mcl_ap_channel PROPERTIES
     C_STANDARD 99
     C_STANDARD_REQUIRED YES
@@ -52,6 +55,9 @@ if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
         ${CMAKE_CURRENT_SOURCE_DIR}/experiments/001-known-waveform
         ${MCL_WIRE_DIR}/include)
     target_link_libraries(mcl_ap_exp001 PUBLIC mcl_ap_exp_wire_dep)
+    if(NOT WIN32)
+        target_link_libraries(mcl_ap_exp001 PUBLIC m)
+    endif()
     set_target_properties(mcl_ap_exp001 PROPERTIES
         C_STANDARD 99
         C_STANDARD_REQUIRED YES
@@ -80,4 +86,12 @@ if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
         C_STANDARD 99
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
+
+    if(MCL_AP_BUILD_TESTS)
+        add_test(NAME mcl_ap_exp001_unit COMMAND mcl_ap_exp001_test)
+        add_test(
+            NAME mcl_ap_exp001_source_decode
+            COMMAND mcl_ap_exp001_decode_wav
+                    "${CMAKE_CURRENT_SOURCE_DIR}/experiments/001-known-waveform/exp001_e3_source.wav")
+    endif()
 endif()

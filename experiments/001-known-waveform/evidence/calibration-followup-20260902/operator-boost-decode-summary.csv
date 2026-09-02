@@ -1,0 +1,5 @@
+"Variant","ExitCode","Result"
+"channel0-raw","3","Decode failed with status 5: | Candidate: start=1551, correlation=0.041638, preamble_end=6351 | Decoded header: payload_length=0, received_crc=0x0000, computed_crc=0x0000"
+"channel1-raw","3","Decode failed with status 5: | Candidate: start=1538, correlation=0.055795, preamble_end=6338 | Decoded header: payload_length=0, received_crc=0x0000, computed_crc=0x0000"
+"channel0-calibrated","3","Decode failed with status 5: | Candidate: start=1550, correlation=0.057617, preamble_end=6350 | Decoded header: payload_length=0, received_crc=0x0000, computed_crc=0x0000"
+"channel1-calibrated","3","Decode failed with status 5: | Candidate: start=3062, correlation=0.076189, preamble_end=7862 | Decoded header: payload_length=0, received_crc=0x0000, computed_crc=0x0000"

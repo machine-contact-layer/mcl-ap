@@ -305,7 +305,10 @@ int main(void)
             memset(&imp, 0, sizeof(imp));
             imp.enable_awgn = 1u;
             imp.awgn_snr_db = snrs[s];
-            sprintf(title, "AWGN SNR = %g dB", snrs[s]);
+            if (snprintf(title, sizeof(title), "AWGN SNR = %g dB", snrs[s]) < 0) {
+                fprintf(stderr, "failed to format AWGN scenario title\n");
+                return 1;
+            }
 
             for (t = 0u; t < 4u; ++t) {
                 eval_candidate_scenario((exp001_preamble_type_t)t, calib[t].threshold_gamma, &imp, 12u, &results[t]);

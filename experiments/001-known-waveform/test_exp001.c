@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 
 static int tests_run = 0;
 static int tests_passed = 0;
@@ -820,7 +821,7 @@ static void test_wav_reader_hardened(void)
         /* UNKNOWN "JUNK" chunk */
         fwrite("JUNK", 1, 4, f);
         test_write_u32(f, junk_bytes);
-        char junk_data[16] = "PADDING_JUNK_OK!";
+        const char junk_data[] = "PADDING_JUNK_OK!";
         fwrite(junk_data, 1, 16, f);
 
         /* data chunk */
