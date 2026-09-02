@@ -42,8 +42,23 @@ degraded since the original E3 run (preamble correlation about 0.56 on the board
 On both receivers the measured band choice takes recovery from total failure to working, on a
 channel where the original waveform no longer recovers anything at all.
 
+### Reverse direction (E4)
+
+The board also transmits. Firmware v2 adds a `PLAY` command that emits this candidate frame
+through the DFR1154 MAX98357 amplifier, so the return path can be measured:
+
+| Path | Acquired | Exact recovery |
+|------|----------|----------------|
+| board speaker → laptop Realtek mic | 10/10 @ 0.883–0.889 | **8/10** |
+
+That is the first MCL frame recovered across a different device pair in the opposite
+direction, and it separates transmitter from receiver response: the same laptop microphone
+recovers 0/10 from the laptop speaker and 8/10 from the board speaker. The weak link was the
+laptop speaker, exactly as Experiment 002 indicated.
+
 Evidence:
 
+- `evidence/e4-board-speaker-to-laptop-mic-20260902/` — reverse-direction E4
 - `evidence/dfr1154-20260902/` — candidate on the board receiver
 - `evidence/laptop-realtek-20260902/` — candidate on the laptop receiver
 - `evidence/control-exp001-baseline-dfr1154-20260902/` — the 3000/5000 control captured in

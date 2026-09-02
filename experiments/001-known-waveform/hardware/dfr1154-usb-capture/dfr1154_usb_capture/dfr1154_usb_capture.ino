@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "ESP_I2S.h"
+#include "exp003_pcm.h"
 
 namespace {
 
@@ -11,8 +12,17 @@ constexpr gpio_num_t kActivityLedPin = GPIO_NUM_3;
 constexpr size_t kSerialChunkBytes = 64;
 constexpr size_t kUsbDrainGuardBytes = 256;
 
+// MAX98357 I2S amplifier driving the onboard speaker. Pin assignment comes
+// from the vendor "Recording & Playback" example.
+constexpr uint8_t kAmpBclkPin = 45;
+constexpr uint8_t kAmpLrclkPin = 46;
+constexpr uint8_t kAmpDataPin = 42;
+constexpr size_t kPlayChunkSamples = 512;
+
 I2SClass microphone;
+I2SClass speaker;
 bool microphone_ready = false;
+bool speaker_ready = false;
 
 uint32_t crc32_ieee(const uint8_t *data, size_t size) {
   uint32_t crc = 0xFFFFFFFFu;
@@ -87,6 +97,41 @@ void capture_once() {
   free(wav);
 }
 
+// Transmit the embedded Experiment 003 candidate frame through the onboard
+// speaker. This makes the board a transmitter as well as a receiver, so a
+// second device pair and the reverse direction can be measured.
+void play_once() {
+  if (!speaker_ready) {
+    Serial.println("MCLERROR AMP_NOT_READY");
+    return;
+  }
+
+  Serial.printf("MCLPLAY ARMED %lu %lu\n",
+                static_cast<unsigned long>(EXP003_PCM_SAMPLE_RATE),
+                static_cast<unsigned long>(EXP003_PCM_SAMPLE_COUNT));
+  Serial.flush();
+
+  // Give the host recorder time to be running before any sound is emitted.
+  delay(500);
+  digitalWrite(kActivityLedPin, HIGH);
+
+  static int16_t chunk[kPlayChunkSamples];
+  size_t emitted = 0;
+  while (emitted < EXP003_PCM_SAMPLE_COUNT) {
+    const size_t remaining = EXP003_PCM_SAMPLE_COUNT - emitted;
+    const size_t count = remaining < kPlayChunkSamples ? remaining : kPlayChunkSamples;
+    for (size_t i = 0; i < count; ++i) {
+      chunk[i] = static_cast<int16_t>(pgm_read_word(&kExp003Pcm[emitted + i]));
+    }
+    speaker.write(reinterpret_cast<uint8_t *>(chunk),
+                  count * sizeof(int16_t));
+    emitted += count;
+  }
+
+  digitalWrite(kActivityLedPin, LOW);
+  Serial.println("MCLPLAYEND");
+}
+
 }  // namespace
 
 void setup() {
@@ -111,7 +156,16 @@ void setup() {
     return;
   }
 
-  Serial.println("MCL_USB_CAPTURE_READY v1 PDM=38,39 RATE=48000 CHANNELS=1 BITS=16");
+  speaker.setPins(kAmpBclkPin, kAmpLrclkPin, kAmpDataPin);
+  speaker_ready = speaker.begin(I2S_MODE_STD,
+                                kSampleRateHz,
+                                I2S_DATA_BIT_WIDTH_16BIT,
+                                I2S_SLOT_MODE_MONO);
+  if (!speaker_ready) {
+    Serial.println("MCLWARN AMP_INIT_FAILED");
+  }
+
+  Serial.println("MCL_USB_CAPTURE_READY v2 PDM=38,39 AMP=45,46,42 RATE=48000 CHANNELS=1 BITS=16");
 }
 
 void loop() {
@@ -124,6 +178,8 @@ void loop() {
   command.trim();
   if (command == "CAPTURE") {
     capture_once();
+  } else if (command == "PLAY") {
+    play_once();
   } else if (command == "PING") {
     Serial.println("MCLPONG v1");
   } else if (command.length() != 0) {
