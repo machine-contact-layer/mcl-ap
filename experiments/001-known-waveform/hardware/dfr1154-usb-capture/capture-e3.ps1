@@ -1,7 +1,11 @@
 param(
     [string]$PortName = 'COM3',
     [string]$OutputPath = '',
-    [string]$SourceWav = ''
+    [string]$SourceWav = '',
+    # Optional operator hook run after capture to restore host audio settings this
+    # session may have changed. Empty by default: the restore procedure belongs to
+    # the host, not to the experiment.
+    [string]$RestoreScript = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -147,5 +151,11 @@ try {
     $player.Stop()
     if ($serial.IsOpen) { $serial.Close() }
     $serial.Dispose()
-    & 'C:\Users\marsm\Desktop\RESTORE_MCL_AUDIO.ps1'
+    if (-not [string]::IsNullOrWhiteSpace($RestoreScript)) {
+        if (Test-Path -LiteralPath $RestoreScript -PathType Leaf) {
+            & $RestoreScript
+        } else {
+            Write-Warning "RestoreScript not found, host audio left unchanged: $RestoreScript"
+        }
+    }
 }
