@@ -490,6 +490,24 @@ static double goertzel_power(const float *samples, size_t n, double target_freq_
  */
 static size_t symbol_index(double t)
 {
+    /*
+     * A negative boundary is not a sample index, and converting a negative
+     * double to size_t is undefined behaviour. UBSan caught this reaching the
+     * conversion with t = -16 during the timing search.
+     *
+     * The search evaluates candidate phases that start before the buffer, and
+     * every call site rejects those with its own `t0 < 0.0` test -- but that
+     * test runs AFTER this conversion, so the undefined conversion happened and
+     * its result was then discarded. Returning 0 here changes no outcome,
+     * because no caller uses the value when t is negative. It exists to make
+     * the conversion defined, not to give a negative boundary a meaning.
+     *
+     * Verified after the change: the retained E3 source still decodes to the
+     * exact same Wire bytes and semantic object.
+     */
+    if (t < 0.0) {
+        return 0u;
+    }
     return (size_t)floor(t + 0.5);
 }
 
