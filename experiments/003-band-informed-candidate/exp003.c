@@ -65,7 +65,7 @@ static int do_gen(const char *path)
     obj.priority = 1u;
     obj.source_ref = 0x00000001u;
     obj.body.presence.machine_class = 1u;
-    obj.body.presence.capability_digest = 0x000001u;
+    obj.body.presence.capability_tag = 0x000001u;
     obj.body.presence.ttl = 60u;
 
     if (mcl_wire_tier0_encode(&obj, wire_buf, sizeof(wire_buf), &wire_written)

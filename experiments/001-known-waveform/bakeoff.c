@@ -163,7 +163,7 @@ static void eval_candidate_scenario(
     obj.priority = 1u;
     obj.source_ref = 0xAA550001u;
     obj.body.presence.machine_class = 2u;
-    obj.body.presence.capability_digest = 0x00FF00u;
+    obj.body.presence.capability_tag = 0x00FF00u;
     obj.body.presence.ttl = 30u;
     mcl_wire_tier0_encode(&obj, wire_buf, sizeof(wire_buf), &wire_written);
 

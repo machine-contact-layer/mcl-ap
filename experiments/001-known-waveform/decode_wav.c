@@ -162,7 +162,7 @@ int main(int argc, char **argv)
         obj.priority != 1u ||
         obj.source_ref != 1u ||
         obj.body.presence.machine_class != 1u ||
-        obj.body.presence.capability_digest != 1u ||
+        obj.body.presence.capability_tag != 1u ||
         obj.body.presence.ttl != 60u) {
         fprintf(stderr, "E3 semantic-object verification failed\n");
         return 6;
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
     switch (obj.kind) {
     case MCL_WIRE_KIND_PRESENCE:
         printf("  Machine class: %u\n", (unsigned)obj.body.presence.machine_class);
-        printf("  Capability digest: 0x%06X\n", obj.body.presence.capability_digest);
+        printf("  Capability digest: 0x%06X\n", obj.body.presence.capability_tag);
         printf("  TTL: %u\n", (unsigned)obj.body.presence.ttl);
         break;
     case MCL_WIRE_KIND_HAZARD:

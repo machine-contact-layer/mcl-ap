@@ -54,7 +54,7 @@ BOOTSTRAP {
     frame_type
     ephemeral_node_id
     reply_window_or_slot
-    capability_digest
+    capability_tag
     integrity_check
 }
 ```

@@ -272,7 +272,7 @@ static void test_sro_receiver_timing_acquisition(void)
     src_obj.priority = 1u;
     src_obj.source_ref = 0x12345678u;
     src_obj.body.presence.machine_class = 1u;
-    src_obj.body.presence.capability_digest = 0x00AABBu;
+    src_obj.body.presence.capability_tag = 0x00AABBu;
     src_obj.body.presence.ttl = 60u;
 
     mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
@@ -364,7 +364,7 @@ static void test_full_clean_pipeline(void)
         switch (kinds[k]) {
         case MCL_WIRE_KIND_PRESENCE:
             src_obj.body.presence.machine_class = 2u;
-            src_obj.body.presence.capability_digest = 0x123456u;
+            src_obj.body.presence.capability_tag = 0x123456u;
             src_obj.body.presence.ttl = 45u;
             break;
         case MCL_WIRE_KIND_HAZARD:
@@ -465,7 +465,7 @@ static void test_expanded_impairments(void)
     src_obj.priority = 1u;
     src_obj.source_ref = 0xFEEDFACEu;
     src_obj.body.presence.machine_class = 1u;
-    src_obj.body.presence.capability_digest = 0x000102u;
+    src_obj.body.presence.capability_tag = 0x000102u;
     src_obj.body.presence.ttl = 30u;
 
     mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
@@ -597,7 +597,7 @@ static void test_receiver_channel_bias_compensation(void)
     src_obj.priority = 1u;
     src_obj.source_ref = 1u;
     src_obj.body.presence.machine_class = 1u;
-    src_obj.body.presence.capability_digest = 1u;
+    src_obj.body.presence.capability_tag = 1u;
     src_obj.body.presence.ttl = 60u;
     mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
 
@@ -674,7 +674,7 @@ static void test_fractional_timing_degraded_channel(void)
     src_obj.priority = 1u;
     src_obj.source_ref = 1u;
     src_obj.body.presence.machine_class = 1u;
-    src_obj.body.presence.capability_digest = 1u;
+    src_obj.body.presence.capability_tag = 1u;
     src_obj.body.presence.ttl = 60u;
     mcl_wire_tier0_encode(&src_obj, wire_buf, sizeof(wire_buf), &wire_written);
 
@@ -1108,7 +1108,7 @@ static void generate_e3_source_wav(void)
     obj.priority = 1u;
     obj.source_ref = 0x00000001u;
     obj.body.presence.machine_class = 1u;
-    obj.body.presence.capability_digest = 0x000001u;
+    obj.body.presence.capability_tag = 0x000001u;
     obj.body.presence.ttl = 60u;
 
     mcl_wire_tier0_encode(&obj, wire_buf, sizeof(wire_buf), &wire_written);
