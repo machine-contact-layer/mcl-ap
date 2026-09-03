@@ -398,6 +398,10 @@ static void test_full_clean_pipeline(void)
             src_obj.body.degraded_state.ttl = 30u;
             break;
         case MCL_WIRE_KIND_TRANSPORT_OFFER:
+            /* migration_ref must be set explicitly: the round trip compares the
+             * whole object, so an uninitialised field would make the result
+             * depend on stack residue. */
+            src_obj.body.transport_offer.migration_ref = UINT32_C(0x4D194201);
             src_obj.body.transport_offer.transport_id = 2u;
             src_obj.body.transport_offer.profile_id = 1u;
             src_obj.body.transport_offer.endpoint_token = 0x55667788u;
