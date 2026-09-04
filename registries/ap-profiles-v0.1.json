@@ -1,39 +1,47 @@
 {
-  "registry_version": "0.1-draft",
-  "status": "provisional",
-  "transport_id": 1,
-  "transport_name": "MCL_AP",
-  "transport_registry": "mcl-link/registries/transport-ids-v0.1.json",
-  "purpose": "Assigned values for the 8-bit profile_id field for the acoustic binding.",
-  "allocation_policy": {
-    "0x00": "Reserved. Never assigned, so an uninitialised field names no profile.",
-    "0x01_0x3F": "MCL Standards Action",
-    "0x40_0xBF": "Specification Required",
-    "0xC0_0xEF": "Experimental Use",
-    "0xF0_0xFE": "Private Use",
-    "0xFF": "Reserved"
+ "registry_version": "0.1-draft",
+ "status": "provisional",
+ "transport_id": 1,
+ "transport_name": "MCL_AP",
+ "transport_registry": "mcl-link/registries/transport-ids-v0.1.json",
+ "purpose": "Assigned values for the 8-bit profile_id field for the acoustic binding.",
+ "allocation_policy": {
+  "0x00": "Reserved. Never assigned, so an uninitialised field names no profile.",
+  "0x01_0x3F": "MCL Standards Action",
+  "0x40_0xBF": "Specification Required",
+  "0xC0_0xEF": "Experimental Use",
+  "0xF0_0xFE": "Private Use",
+  "0xFF": "Reserved"
+ },
+ "profiles": [
+  {
+   "id": 0,
+   "name": "RESERVED",
+   "status": "reserved",
+   "detail": "Permanently reserved. An offer carrying profile_id 0 is malformed."
   },
-  "profiles": [
-    {
-      "id": 0,
-      "name": "RESERVED",
-      "status": "reserved",
-      "detail": "Permanently reserved. An offer carrying profile_id 0 is malformed."
-    },
-    {
-      "id": 192,
-      "name": "AP-LAB-FSK-EXPERIMENTAL",
-      "status": "experimental",
-      "range": "Experimental Use",
-      "detail": "The laboratory binary FSK instrument used by Experiments 001 and 003. NOT a candidate acoustic profile and NOT AP-B0. It is the instrument that produced the E3 and E4 acoustic results, frozen so those results remain reproducible, and it carries raw Wire bytes rather than complete Link frames.",
-      "evidence": "mcl-ap/research/EVIDENCE_LEDGER.md. Experiment 003 selected a 3/6 kHz pair after measuring the actual device path; the earlier 3/5 kHz pair sat in a notch in the laptop speaker response and scored 0/10 before the band was chosen by measurement.",
-      "promotion_gate": "AP-B0 is NOT SELECTED. A normative acoustic profile requires the reverse path swept, a synchronisation bake-off rather than a prematurely frozen choice, and complete Link frame carriage instead of raw Wire bytes. 3/6 kHz must not be standardised merely because it rescued one hardware campaign."
-    }
-  ],
-  "notes": [
-    "This registry deliberately assigns no Standards Action value. Frequencies, modulation and rates are profile concerns that must not become Core invariants (Architecture Charter 2.8), and freezing one before the evidence earns it is the error this project's governing rule exists to prevent.",
-    "Acoustic reception is proximity EVIDENCE and never proof of co-presence.",
-    "The acoustic medium is observable, injectable and relayable. It is an out-of-band medium but not an authenticated one.",
-    "An implementation receiving an unassigned profile_id MUST NOT guess. It refuses the offer and may continue on its current transport."
-  ]
+  {
+   "id": 192,
+   "name": "AP-LAB-FSK-EXPERIMENTAL",
+   "status": "experimental",
+   "range": "Experimental Use",
+   "detail": "The laboratory binary FSK instrument used by Experiments 001 and 003. NOT a candidate acoustic profile and NOT AP-B0. It is the instrument that produced the E3 and E4 acoustic results, frozen so those results remain reproducible, and it carries raw Wire bytes rather than complete Link frames.",
+   "evidence": "mcl-ap/research/EVIDENCE_LEDGER.md. Experiment 003 selected a 3/6 kHz pair after measuring the actual device path; the earlier 3/5 kHz pair sat in a notch in the laptop speaker response and scored 0/10 before the band was chosen by measurement.",
+   "promotion_gate": "AP-B0 is NOT SELECTED. A normative acoustic profile requires the reverse path swept, a synchronisation bake-off rather than a prematurely frozen choice, and complete Link frame carriage instead of raw Wire bytes. 3/6 kHz must not be standardised merely because it rescued one hardware campaign."
+  }
+ ],
+ "notes": [
+  "This registry deliberately assigns no Standards Action value. Frequencies, modulation and rates are profile concerns that must not become Core invariants (Architecture Charter 2.8), and freezing one before the evidence earns it is the error this project's governing rule exists to prevent.",
+  "Acoustic reception is proximity EVIDENCE and never proof of co-presence.",
+  "The acoustic medium is observable, injectable and relayable. It is an out-of-band medium but not an authenticated one.",
+  "An implementation receiving an unassigned profile_id MUST NOT guess. It refuses the offer and may continue on its current transport."
+ ],
+ "governance": {
+  "change_controller": "The MCL maintainer (the owner of the eight MCL repositories).",
+  "procedures": "mcl-core/governance/GOVERNANCE.md section 4 defines application, review, promotion and deprecation for every MCL registry. They are defined once there rather than restated per registry, so they cannot drift apart.",
+  "application": "GOVERNANCE.md 4.1 -- an issue naming the registry, requested range, meaning, a permanent specification reference, and the failure behaviour required of a receiver that does not implement it. An application without a specification reference is not an application.",
+  "review": "GOVERNANCE.md 4.2",
+  "promotion": "GOVERNANCE.md 4.3 -- an Experimental Use value is NEVER relabelled Stable. Promotion assigns a NEW value in the Standards Action range after an independent implementation has interoperated using the experimental one, and re-runs conformance evidence on the final assigned bytes.",
+  "deprecation": "GOVERNANCE.md 4.4 -- a retired assignment becomes a permanent tombstone. Its value is never reused and a decoder must refuse it, because a peer that once meant something by that value would otherwise be misread rather than refused."
+ }
 }
