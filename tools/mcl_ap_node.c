@@ -1,7 +1,7 @@
 /*
  * MCL-AP node, host side.
  *
- * The laptop half of Experiment 004. It is the same program the DFR1154 runs,
+ * The laptop half of Experiment 008. It is the same program the DFR1154 runs,
  * minus the I2S peripherals: it builds a Tier-0 object with mcl-wire, wraps it
  * in a Link frame with mcl-link, and modulates or demodulates it with the
  * MCL-AP candidate modem -- the same three source files the firmware compiles.

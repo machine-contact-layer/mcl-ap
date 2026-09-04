@@ -1,4 +1,4 @@
-# Experiment 004: over-air MCL between the DFR1154 and this laptop, both
+# Experiment 008: over-air MCL between the DFR1154 and this laptop, both
 # directions, with the protocol stack running on BOTH peers.
 #
 #   .\run-node-trials.ps1 -Direction board-to-host -Trials 10
@@ -28,8 +28,8 @@ param(
     [int]$Trials = 10,
     [string]$Port = 'COM3',
     [string]$Mic = 'Microphone Array (Realtek(R) Audio)',
-    [string]$Node = 'C:\Users\marsm\AppData\Local\Temp\mcl-ap-win\Release\mcl_ap_node.exe',
-    [string]$Esptool = 'C:\Users\marsm\AppData\Roaming\Python\Python314\Scripts\esptool.exe',
+    [string]$Node = (Join-Path $env:TEMP 'mcl-ap-win\Release\mcl_ap_node.exe'),
+    [string]$Esptool = (Get-Command esptool -ErrorAction SilentlyContinue).Source,
     [string]$EvidenceName = '',
     [int]$PlayDelayMs = 50,
     # 'frame' sends a complete major-1 Link frame carrying a major-1 Tier-0
@@ -69,7 +69,9 @@ if (-not (Test-Path $Node)) { throw "no host node tool at $Node" }
 # first makes each run start from the same state rather than from whatever
 # the previous run left behind.
 if (-not $SkipReset) {
-    if (-not (Test-Path $Esptool)) { throw "esptool not found at $Esptool" }
+    if (-not $Esptool -or -not (Test-Path $Esptool)) {
+        throw 'esptool is not on PATH. Install it, or pass -Esptool with its full path.'
+    }
     & $Esptool --chip esp32s3 --port $Port --after hard-reset chip-id | Out-Null
     Start-Sleep -Milliseconds 2500
 }
@@ -126,7 +128,7 @@ function Log([string]$text) {
     $script:log += $text
 }
 
-Log "=== MCL-AP Experiment 004: $Direction, payload=$Payload ==="
+Log "=== MCL-AP Experiment 008: $Direction, payload=$Payload ==="
 Log "date: $(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK')"
 Log "port: $Port"
 Log ''

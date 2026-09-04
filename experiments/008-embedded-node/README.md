@@ -1,9 +1,18 @@
-# MCL-AP Experiment 004: the embedded node
+# MCL-AP Experiment 008: the embedded node
 
 **Status**: LAB / EXPERIMENTAL. Not AP-B0, not a selected profile, nothing here
 freezes spectrum.
 
 **Evidence level**: E4 — multi-device over-air, both directions.
+
+> **A note on the number.** This directory was `004-embedded-node` while the
+> runs were made, and the `run.log` files under `evidence/` still say so in the
+> paths they recorded. It was renumbered to 008 on the day it was written,
+> because 004 through 007 were already allocated to planned experiments in
+> `../README.md` and an allocated number is not reused.
+>
+> The logs were **not** edited to match. They record what the tools printed,
+> and a record that is corrected after the fact is no longer a record.
 
 ## What is new here, and why it is not another E4 run
 

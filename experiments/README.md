@@ -155,3 +155,39 @@ receiver, against a 3000/5000 control captured in the same session.
 The result is about method, not about 6 kHz: profiles must be selected from measurement of the
 actual path. AP-B0 remains NOT selected, and 4/10 on the laptop receiver shows a fixed binary
 FSK pair is still fragile. Implementation and evidence: `003-band-informed-candidate/`.
+
+## Experiment 008 — the embedded node (IMPLEMENTED, E4)
+
+The first experiment in which **MCL itself runs on the microcontroller** rather
+than on a laptop with the board as an instrument.
+
+The DFR1154 builds a major-1 Tier-0 `PRESENCE` with `mcl-wire`, wraps it in a
+major-1 Link frame with `mcl-link`, modulates it with the portable AP candidate
+modem and emits it — and in the other direction it acquires, demodulates,
+verifies the CRC, decodes the frame, decodes the object inside it, and reports
+the field values it read. In `host-to-board` no host is in the loop at all.
+
+Result, 2026-09-04, ten trials per cell, one session:
+
+| Direction | Payload | Acquired | Exact recovery |
+|---|---|--:|--:|
+| board → host | 24-byte Link frame | 10/10 | 2/10 |
+| board → host | 10-byte Wire object | 10/10 | 9/10 |
+| host → board | 10-byte Wire object | 10/10 | 6/10 |
+| host → board | 24-byte Link frame | 10/10 | 7/10 |
+
+This is **portability and end-to-end operation**, not independent
+implementation: the board compiles the same source the host compiles, with a
+different toolchain for a different architecture. `008-embedded-node/README.md`
+states the boundary, the on-board cost, and the three harness defects that
+produced numbers looking like acoustic failures before any acoustic result was
+real.
+
+AP-B0 remains **NOT selected**.
+
+Numbered 008 because 004 through 007 are already allocated to planned
+experiments above. An allocated number is not reused, for the same reason a
+registry value is not reused: somebody may already have referred to it.
+(003 does appear twice in this index — the planned profile-convergence study
+and the implemented band-informed FSK candidate. That collision predates this
+experiment, and adding a third one would not fix it.)

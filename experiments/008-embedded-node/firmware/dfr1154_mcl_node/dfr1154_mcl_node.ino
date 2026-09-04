@@ -1,7 +1,7 @@
 /*
  * MCL embedded node, DFR1154 (FireBeetle 2 ESP32-S3).
  *
- * Experiment 004. LAB / EXPERIMENTAL.
+ * Experiment 008. LAB / EXPERIMENTAL.
  *
  * WHAT MAKES THIS DIFFERENT FROM FIRMWARE v2
  *

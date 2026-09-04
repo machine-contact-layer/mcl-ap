@@ -32,7 +32,7 @@ $BuildPath = Join-Path $Here 'build'
 # reading. Firmware v2 was built the same way.
 $Fqbn = 'esp32:esp32:esp32s3:CDCOnBoot=cdc'
 
-$Backup = 'C:\Users\marsm\Downloads\MCL_DFR1154_BACKUP_20260902\dfr1154-factory-app-before-mcl.bin'
+$Backup = (Join-Path $env:USERPROFILE 'Downloads\MCL_DFR1154_BACKUP_20260902\dfr1154-factory-app-before-mcl.bin')
 
 Write-Host '=== MCL embedded node firmware ===' -ForegroundColor Cyan
 Write-Host "root:   $Root"

@@ -21,14 +21,14 @@ $Here    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Image   = Join-Path $Here 'build\dfr1154_mcl_node.ino.bin'
 $Offset  = '0x20000'
 $Port    = 'COM3'
-$Esptool = 'C:\Users\marsm\AppData\Roaming\Python\Python314\Scripts\esptool.exe'
+$Esptool = (Get-Command esptool -ErrorAction SilentlyContinue).Source
 
-$BackupDir   = 'C:\Users\marsm\Downloads\MCL_DFR1154_BACKUP_20260902'
+$BackupDir   = (Join-Path $env:USERPROFILE 'Downloads\MCL_DFR1154_BACKUP_20260902')
 $BackupImage = Join-Path $BackupDir 'dfr1154-factory-app-before-mcl.bin'
 $BackupSha   = 'BC9D54037F9BC4ABADFC560EA40CC14406DD9FEE5D0376C273C9DFA1E10458F8'
 
-if (-not (Test-Path -LiteralPath $Esptool -PathType Leaf)) {
-    throw "esptool was not found at $Esptool"
+if (-not $Esptool -or -not (Test-Path -LiteralPath $Esptool -PathType Leaf)) {
+    throw 'esptool is not on PATH. Install it, or pass -Esptool with its full path.'
 }
 if (-not (Test-Path -LiteralPath $Image -PathType Leaf)) {
     throw "no firmware image at $Image -- run build.ps1 first"
