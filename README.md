@@ -80,3 +80,9 @@ Exact frequencies, modulation, symbol duration, and FEC parameters are **not fro
 ## Status
 
 Private research repository. Pre-v0.1 candidate specification. Not an adopted standard.
+
+**MCL-AP is Experimental and AP-B0 is not selected.** The waveform has now been
+carried by three different loudspeakers — a laptop, an ESP32-S3 and an Android
+handset — and recovers between 1/10 and 9/10 depending on payload length and
+device. Acquisition is reliable; recovery is not. That is an honest description
+of a research binding and not of a link anything should depend on.

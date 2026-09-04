@@ -191,3 +191,35 @@ registry value is not reused: somebody may already have referred to it.
 (003 does appear twice in this index — the planned profile-convergence study
 and the implemented band-informed FSK candidate. That collision predates this
 experiment, and adding a third one would not fix it.)
+
+## Experiment 009 — an Android handset as the acoustic transmitter (IMPLEMENTED, E3)
+
+`009-android-acoustic-peer/`
+
+A third loudspeaker, and the first one nobody here chose: a consumer phone
+running a vendor Android build. The phone plays the MCL-AP waveform; a laptop
+running the same `ap_modem.c` the DFR1154 runs demodulates the room.
+
+Result, 2026-09-05, ten trials per cell, one session:
+
+| Payload | Acquired | Exact recovery |
+|---|--:|--:|
+| 10-byte Wire object | 10/10 | 4/10 |
+| 24-byte Link frame | 10/10 | 1/10 |
+
+Acquisition correlation ran 0.73-0.87 in every trial, so no failure is a missed
+frame; every failure is a payload bit error. A recovered trial decodes a
+major-1 Link frame carrying a major-1 `PRESENCE` field by field.
+
+**One direction only.** The phone emits and never receives: capture on Android
+requires `RECORD_AUDIO`, `/dev/snd` is `system:audio`, and the adb shell user is
+not in the `audio` group, so no shell binary can open the microphone. That is
+Android's permission model and not a property of the modem, and the experiment
+says so rather than leaving a reader to infer it from a missing row.
+
+The same 2.2x payload growth that collapsed Experiment 008's board→host
+direction (9/10 to 2/10) collapses this one (4/10 to 1/10). Two unrelated
+transmitters, the same shape of degradation: the payload length is doing this.
+
+**Not a usable link, and not claimed as one.** AP-B0 remains **NOT selected**
+and MCL-AP remains Experimental.
