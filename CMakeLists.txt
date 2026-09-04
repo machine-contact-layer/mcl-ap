@@ -17,6 +17,24 @@ set_target_properties(mcl_ap_channel PROPERTIES
     C_STANDARD_REQUIRED YES
     C_EXTENSIONS NO)
 
+# The portable candidate modem. Unlike the experiment code it is built for
+# both the host and an embedded target, so it takes no filesystem, allocates
+# nothing, and keeps its receive working set in a caller-owned struct.
+#
+# EXPERIMENTAL: this is the Experiment 003 candidate waveform, not AP-B0.
+set(MCL_LINK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../mcl-link" CACHE PATH "Path to mcl-link repository")
+
+add_library(mcl_ap_modem STATIC
+    src/ap_modem.c)
+target_include_directories(mcl_ap_modem PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(NOT WIN32)
+    target_link_libraries(mcl_ap_modem PUBLIC m)
+endif()
+set_target_properties(mcl_ap_modem PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO)
+
 if(MCL_AP_BUILD_TESTS)
     enable_testing()
 
@@ -27,6 +45,28 @@ if(MCL_AP_BUILD_TESTS)
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
     add_test(NAME mcl_ap_test COMMAND mcl_ap_test_channel)
+
+    # The modem test decodes the ARCHIVED E4 captures and requires the same
+    # result the frozen Experiment 003 instrument recorded on those files.
+    # Needs mcl-wire and mcl-link because the payload it sends is a real
+    # Tier-0 object inside a real Link frame, built on the spot.
+    if(EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h" AND
+       EXISTS "${MCL_LINK_DIR}/include/mcl/link.h")
+        add_executable(mcl_ap_test_modem
+            tests/test_ap_modem.c
+            ${MCL_WIRE_DIR}/src/wire.c
+            ${MCL_LINK_DIR}/src/link.c)
+        target_include_directories(mcl_ap_test_modem PRIVATE
+            ${MCL_WIRE_DIR}/include
+            ${MCL_LINK_DIR}/include)
+        target_link_libraries(mcl_ap_test_modem PRIVATE mcl_ap_modem)
+        set_target_properties(mcl_ap_test_modem PROPERTIES
+            C_STANDARD 99
+            C_STANDARD_REQUIRED YES
+            C_EXTENSIONS NO)
+        add_test(NAME mcl_ap_modem_test
+                 COMMAND mcl_ap_test_modem "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
 
     add_executable(mcl_ap_test_standalone_header tests/test_standalone_header.c)
     target_link_libraries(mcl_ap_test_standalone_header PRIVATE mcl_ap_channel)
