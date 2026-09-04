@@ -196,6 +196,26 @@ static int do_decode(const char *path, int as_frame)
         return 4;
     }
     if (rc != MCL_AP_MODEM_OK) {
+        /*
+         * Print the bytes that came out even though they failed the CRC.
+         *
+         * "Acquired, no recovery" is a verdict, not a measurement. Every cell
+         * measured so far acquires 10/10 and loses payload bits, so the useful
+         * question is WHERE the bits go wrong -- errors spread evenly across a
+         * frame mean the demodulator is SNR-limited, and errors clustered
+         * toward the end mean symbol timing is drifting. Those two call for
+         * different fixes and the verdict cannot tell them apart.
+         *
+         * The bytes are printed under a different key than a recovered
+         * payload, because they are not one: nothing has verified them and a
+         * reader must not treat them as received data.
+         */
+        if (rc == MCL_AP_MODEM_ERR_CRC && info.payload_bytes > 0u &&
+            info.payload_bytes <= sizeof(recovered)) {
+            printf("unverified=");
+            print_hex(recovered, info.payload_bytes);
+            printf("\n");
+        }
         printf("RESULT: acquired, no recovery\n");
         return 3;
     }

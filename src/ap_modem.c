@@ -559,6 +559,15 @@ static float log_ratio(const int16_t *pcm, size_t start, size_t len,
  * counts of known 0s and 1s is what lets a receiver work on a tilted path
  * instead of deciding every bit the same way.
  */
+static float margin_threshold(float worst_zero, float worst_one,
+                              float mean_midpoint)
+{
+    if (worst_zero < worst_one) {
+        return 0.5f * (worst_zero + worst_one);
+    }
+    return mean_midpoint;
+}
+
 static void estimate_timing(const int16_t *pcm, size_t n,
                             size_t training_bits, float f0, float f1,
                             int32_t *out_phase, float *out_sps, float *out_bias)
@@ -609,6 +618,8 @@ static void estimate_timing(const int16_t *pcm, size_t n,
     {
         float sum0 = 0.0f;
         float sum1 = 0.0f;
+        float worst0 = -1e30f;   /* the transmitted 0 that looked most like a 1 */
+        float worst1 = 1e30f;    /* the transmitted 1 that looked most like a 0 */
         size_t count0 = 0u;
         size_t count1 = 0u;
         for (b = 0u; b < training_bits; ++b) {
@@ -622,17 +633,50 @@ static void estimate_timing(const int16_t *pcm, size_t n,
             ratio = log_ratio(pcm, start, len, f0, f1);
             if ((b & 1u) == 0u) {
                 sum0 += ratio;
+                if (ratio > worst0) { worst0 = ratio; }
                 count0++;
             } else {
                 sum1 += ratio;
+                if (ratio < worst1) { worst1 = ratio; }
                 count1++;
             }
         }
         if (count0 > 0u && count1 > 0u) {
-            *out_bias = 0.5f * (sum0 / (float)count0 + sum1 / (float)count1);
+            const float midpoint =
+                0.5f * (sum0 / (float)count0 + sum1 / (float)count1);
+            *out_bias = margin_threshold(worst0, worst1, midpoint);
         }
     }
 }
+
+/*
+ * Where to put the decision threshold between the two tones.
+ *
+ * The midpoint of the two class means is the obvious answer and it is the
+ * wrong one whenever the path does not treat the two tones equally -- which is
+ * the normal case, not the exceptional one. Experiment 002 measured 6 kHz
+ * sitting at or above the 3 kHz reference on both receivers tested, and a
+ * louder tone is also a tighter distribution: the two classes have different
+ * spreads, so the midpoint of their means is not the point at which they are
+ * equally likely. It sits too close to the noisier class, and that class's tail
+ * crosses it.
+ *
+ * This is not a hypothesis. Re-decoding the failed trials of Experiment 009
+ * showed 28 of 29 payload bit errors were a transmitted 0 read as 1 -- 97% in
+ * one direction, which is a threshold placement and not noise.
+ *
+ * So the threshold is placed by MARGIN instead: halfway between the worst 0 and
+ * the worst 1 observed in the training sequence, which is the point furthest
+ * from both classes' nearest members. The training byte 0x55 is what makes this
+ * possible at all -- eight of each symbol, known in advance, at the start of
+ * every frame.
+ *
+ * When the two classes overlap in the training itself, the margin is negative,
+ * there is no separating point, and the estimate falls back to the midpoint of
+ * means. A frame whose own training does not separate is not a frame this
+ * refinement can rescue, and pretending otherwise would place the threshold
+ * using an outlier.
+ */
 
 mcl_ap_modem_status_t mcl_ap_modem_decode(
     const mcl_ap_modem_config_t *config,

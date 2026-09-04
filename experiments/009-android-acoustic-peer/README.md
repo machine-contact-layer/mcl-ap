@@ -114,3 +114,51 @@ The phone must be unlocked, connected over USB, and near the microphone. The
 script pushes the waveforms, wakes the screen, drives the volume, runs the
 trials, restores the volume and writes `evidence/` with a checksum for every
 file.
+
+## What these captures then fixed in the receiver
+
+The failed trials were not thrown away. `mcl_ap_node` now prints the demodulated
+bytes even when they fail the CRC — under the key `unverified=`, because nothing
+has checked them — and comparing those against the known transmitted payload
+turns a verdict into a measurement.
+
+Across the six failed `wire` trials, 29 payload bits were wrong. **28 of them
+were a transmitted 0 read as a 1**: 97% in one direction. That is not noise. A
+decision threshold placed correctly produces errors in both directions roughly
+equally; one that sits too close to one class produces exactly this.
+
+The cause is that the two tones do not arrive equally. Experiment 002 measured
+6 kHz sitting at or above the 3 kHz reference on both receivers it tested, and a
+louder tone is also a tighter distribution — so the midpoint of the two class
+means, which is where the threshold was, is not the point at which the two
+classes are equally likely. It sits nearer the noisier one, and that class's
+tail crosses it.
+
+The threshold is now placed by **margin**: halfway between the worst 0 and the
+worst 1 in the training sequence, falling back to the midpoint of means when the
+training itself does not separate. The 0x55 training byte is what makes this
+possible — eight of each symbol, known in advance, at the head of every frame.
+
+Re-decoding **every archived capture in this repository**, with no
+retransmission and no change to what goes on the wire:
+
+| capture set | before | after |
+|---|--:|--:|
+| 008 board→host, 24-byte frame | 2/10 | **3/10** |
+| 008 board→host, 10-byte object | 9/10 | 9/10 |
+| 009 handset, 10-byte object | 4/10 | **5/10** |
+| 009 handset, 24-byte frame | 1/10 | **2/10** |
+
+Three cells improved and none regressed. Acquisition stayed 10/10 everywhere,
+which it must: the change is downstream of acquisition entirely.
+
+**The archived evidence above is not rewritten.** The numbers in
+`008-embedded-node/README.md` and in the table at the top of this file are what
+those sessions measured, under the decision rule in force when they ran. This
+table is a separate measurement — the same recordings, a different receiver —
+and it is reported as one.
+
+It also does not make MCL-AP a usable link. 3/10 is not 2/10 and it is not a
+link either. What it is, is a receiver-side gain that costs no bytes, no
+airtime and no transmitter change, found by looking at which way the bits fell
+rather than by trying parameters.

@@ -50,7 +50,7 @@ param(
     [string]$Mic,
     [int]$Volume = 11,
     [int]$Window = 12,
-    [string]$Adb = 'C:\Users\marsm\rdb\adb.exe',
+    [string]$Adb = 'adb',
     [string]$Node,
     [string]$EvidenceDir = ''
 )
@@ -60,6 +60,17 @@ $ErrorActionPreference = 'Continue'
 if ([string]::IsNullOrWhiteSpace($Mic))  { throw "-Mic is required. List devices with: ffmpeg -list_devices true -f dshow -i dummy" }
 if ([string]::IsNullOrWhiteSpace($Node)) { throw "-Node is required: the path to mcl_ap_node.exe" }
 if (-not (Test-Path -LiteralPath $Node)) { throw "mcl_ap_node not found at $Node" }
+
+# Resolved rather than hardcoded. A path with a username in it is both a
+# disclosure and a lie on anybody else's machine, and
+# check-publication-readiness.sh treats one in a tracked script as fatal.
+$adbCmd = Get-Command $Adb -ErrorAction SilentlyContinue
+if ($null -eq $adbCmd) {
+    if (Test-Path -LiteralPath $Adb) { $Adb = (Resolve-Path $Adb).Path }
+    else { throw "adb not found. Put it on PATH or pass -Adb <path to adb.exe>." }
+} else {
+    $Adb = $adbCmd.Source
+}
 if ($Volume -lt 0 -or $Volume -gt 13) {
     throw "-Volume $Volume is outside the range this experiment will drive (0..13). The top of the scale is not needed and is not offered."
 }
