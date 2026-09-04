@@ -1,0 +1,62 @@
+﻿=== MCL-AP Experiment 004: board-to-host, payload=frame ===
+date: 2026-09-04T19:08:23+05:30
+port: COM3
+
+board: MCLNODE PONG v3
+
+trial 01 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=5 acquired=1 index=95155 corr=0.776972 crc_valid=0 rx_crc=E15C calc_crc=7077 bytes=24
+           RESULT: acquired, no recovery
+
+trial 02 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=5 acquired=1 index=106527 corr=0.818627 crc_valid=0 rx_crc=E15C calc_crc=EB6F bytes=24
+           RESULT: acquired, no recovery
+
+trial 03 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=0 acquired=1 index=106092 corr=0.818401 crc_valid=1 rx_crc=E15C calc_crc=E15C bytes=24
+           payload=10140DFB11540001000A10020DFB11540000043C448DA45F
+           FRAME link_major=1 class=0 flags=0x14 source_ref=234557780 sequence=1 payload_len=10 consumed=24
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 04 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=5 acquired=1 index=106143 corr=0.797415 crc_valid=0 rx_crc=E15C calc_crc=46A0 bytes=24
+           RESULT: acquired, no recovery
+
+trial 05 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=5 acquired=1 index=106513 corr=0.794045 crc_valid=0 rx_crc=E15C calc_crc=210A bytes=24
+           RESULT: acquired, no recovery
+
+trial 06 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=5 acquired=1 index=107186 corr=0.785791 crc_valid=0 rx_crc=E15C calc_crc=3CB7 bytes=24
+           RESULT: acquired, no recovery
+
+trial 07 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=5 acquired=1 index=106984 corr=0.815255 crc_valid=0 rx_crc=E05C calc_crc=C7C3 bytes=24
+           RESULT: acquired, no recovery
+
+trial 08 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=0 acquired=1 index=106933 corr=0.548310 crc_valid=1 rx_crc=E15C calc_crc=E15C bytes=24
+           payload=10140DFB11540001000A10020DFB11540000043C448DA45F
+           FRAME link_major=1 class=0 flags=0x14 source_ref=234557780 sequence=1 payload_len=10 consumed=24
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 09 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=5 acquired=1 index=106876 corr=0.570108 crc_valid=0 rx_crc=E15C calc_crc=5300 bytes=24
+           RESULT: acquired, no recovery
+
+trial 10 sent: SEND FRAME bytes=24 samples=56320 hex=10140DFB11540001000A10020DFB11540000043C448DA45F
+           rc=5 acquired=1 index=107323 corr=0.878109 crc_valid=0 rx_crc=E15C calc_crc=D894 bytes=24
+           RESULT: acquired, no recovery
+
+=== RESULT ===
+direction:  board-to-host
+payload:    frame
+trials:     10
+acquired:   10/10
+recovered:  2/10
+
+Acquisition and recovery are reported separately on purpose. "Heard
+nothing" and "heard something and could not read it" are different
+problems, and only the second one means a link is nearly working.

@@ -1,0 +1,74 @@
+﻿=== MCL-AP Experiment 004: board-to-host, payload=wire ===
+date: 2026-09-04T19:09:46+05:30
+port: COM3
+
+board: MCLNODE PONG v3
+
+trial 01 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=95469 corr=0.884938 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 02 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=100649 corr=0.601309 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 03 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=99772 corr=0.693142 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 04 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=5 acquired=1 index=99669 corr=0.813994 crc_valid=0 rx_crc=7910 calc_crc=7D4A bytes=10
+           RESULT: acquired, no recovery
+
+trial 05 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=99567 corr=0.578835 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 06 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=99627 corr=0.714224 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 07 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=100346 corr=0.722178 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 08 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=100296 corr=0.811594 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 09 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=100177 corr=0.754664 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+trial 10 sent: SEND WIRE bytes=10 samples=38400 hex=10020DFB11540000043C
+           rc=0 acquired=1 index=100151 corr=0.769925 crc_valid=1 rx_crc=7910 calc_crc=7910 bytes=10
+           payload=10020DFB11540000043C
+           OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=234557780 capability_tag=4 ttl=60
+           RESULT: RECOVERED
+
+=== RESULT ===
+direction:  board-to-host
+payload:    wire
+trials:     10
+acquired:   10/10
+recovered:  9/10
+
+Acquisition and recovery are reported separately on purpose. "Heard
+nothing" and "heard something and could not read it" are different
+problems, and only the second one means a link is nearly working.

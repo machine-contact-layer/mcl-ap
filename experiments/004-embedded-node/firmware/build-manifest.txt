@@ -1,0 +1,26 @@
+﻿MCL embedded node firmware build
+built: 2026-09-04T18:57:04Z
+fqbn:  esp32:esp32:esp32s3:CDCOnBoot=cdc
+
+STAGED SOURCES, copied from the canonical repositories at build time.
+The board runs the same source the host runs; these hashes say which.
+
+  mcl-ap\src\ap_modem.c                  D793440EB28833FCF9B8D49EE5F06DB51DBE89A455EA358F27D929CB84401898
+  mcl-ap\include\mcl\ap_modem.h          09014F627CCB2AA478E615B1F5E04ED1ED7F2CB2F372702A72F1A5167C5D16EC
+  mcl-wire\src\wire.c                    D531AFC2B88156EF869040C089A18C56DB5CEF923CFBAB4D5641FD448E968A3F
+  mcl-wire\include\mcl\wire.h            65AAA86D3DFF97D582192CB63C805965518DF558708A0D2455672C9C5A97153B
+  mcl-link\src\link.c                    2EED0537DD0543883D6E44525D7FF3AFFB3C1C5E70B991D0AC5A49ED3DA4F651
+  mcl-link\include\mcl\link.h            CAED98AD1C715DBD82C841A0984242DDB0CD1CEA1E32B8F64DC0ADBE891DDA2A
+
+IMAGE
+
+  dfr1154_mcl_node.ino.bin  352544 bytes
+  sha256 EA26B59386890CF6CDE3B72D1643C3F09377D7D73E74B7DF0D4D9048AE22EC4C
+
+FLASH (application partition only):
+
+  esptool --chip esp32s3 --port COM3 --baud 921600 write-flash 0x20000 \
+    C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\004-embedded-node\firmware\build\dfr1154_mcl_node.ino.bin
+
+Do NOT upload through the Arduino CLI: it can also rewrite the bootloader
+and the partition table. Restore afterwards with RESTORE_DFR1154_APP.cmd.

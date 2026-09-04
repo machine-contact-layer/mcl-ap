@@ -348,34 +348,96 @@ static void reference_stats(const float *ref_i, const float *ref_q,
  * strongly than it measures the chirp -- which produces a confident
  * acquisition at whatever offset happens to be loudest.
  */
-static float correlate_at(const float *ref_i, const float *ref_q,
-                          float mean_i, float mean_q, float ref_energy,
-                          const int16_t *pcm, size_t count, size_t stride)
+/*
+ * One scan of the correlation surface, over offsets [lo, hi] at `stride`.
+ *
+ * WHY THIS IS ONE PASS AND NOT TWO
+ *
+ * The straightforward form computes the window's mean, then correlates the
+ * mean-removed reference against the mean-removed signal -- two passes over
+ * every candidate window. On the board that cost 20.9 s for a single decode,
+ * which is not a receiver, it is a batch job.
+ *
+ * Two facts remove the second pass entirely:
+ *
+ *   1. The signal mean cancels out of the numerator. With a mean-removed
+ *      reference, sum((ref - mean_ref) * (x - mean_x)) equals
+ *      sum(ref * x) - mean_ref * sum(x), because sum(ref - mean_ref) is zero.
+ *      So the mean is needed only through sum(x), which the scan already has.
+ *
+ *   2. Successive candidate windows differ by exactly one sample of the
+ *      strided subsequence, so sum(x) and sum(x^2) slide: drop the sample
+ *      leaving, add the sample entering. They are maintained in int64 over
+ *      the raw PCM, which is exact -- a float running sum over 3200 squared
+ *      samples drifts, and a normalization that drifts turns into a
+ *      correlation that drifts.
+ *
+ * What is left in the inner loop is two multiply-accumulates per tap.
+ */
+static void scan(const float *ref_i, const float *ref_q,
+                 float mean_i, float mean_q, float ref_energy,
+                 const int16_t *pcm, size_t count, size_t stride,
+                 size_t lo, size_t hi,
+                 size_t *best_index, float *best_value)
 {
-    float corr_i = 0.0f;
-    float corr_q = 0.0f;
-    float sig_energy = 0.0f;
-    float sig_mean = 0.0f;
-    float norm;
-    size_t i;
+    const float inv = 1.0f / PCM_SCALE;
+    int64_t sum = 0;
+    int64_t sumsq = 0;
+    size_t span = count * stride;   /* samples the window covers */
+    size_t i, j;
 
-    for (i = 0u; i < count; ++i) {
-        sig_mean += (float)pcm[i * stride];
-    }
-    sig_mean /= (float)count;
+    *best_index = lo;
+    *best_value = -1.0f;
 
-    for (i = 0u; i < count; ++i) {
-        float s = ((float)pcm[i * stride] - sig_mean) / PCM_SCALE;
-        corr_i += (ref_i[i * stride] - mean_i) * s;
-        corr_q += (ref_q[i * stride] - mean_q) * s;
-        sig_energy += s * s;
+    for (j = 0u; j < count; ++j) {
+        int32_t v = pcm[lo + j * stride];
+        sum += v;
+        sumsq += (int64_t)v * (int64_t)v;
     }
 
-    norm = sqrtf(ref_energy * sig_energy);
-    if (norm <= 1e-12f) {
-        return 0.0f;
+    for (i = lo; ; i += stride) {
+        float corr_i = 0.0f;
+        float corr_q = 0.0f;
+        float sum_scaled = (float)sum * inv;
+        float energy;
+        float norm;
+
+        for (j = 0u; j < count; ++j) {
+            float x = (float)pcm[i + j * stride] * inv;
+            corr_i += ref_i[j * stride] * x;
+            corr_q += ref_q[j * stride] * x;
+        }
+        corr_i -= mean_i * sum_scaled;
+        corr_q -= mean_q * sum_scaled;
+
+        /* Mean-removed signal energy, from the exact running sums. */
+        energy = (float)sumsq * inv * inv
+                 - (sum_scaled * sum_scaled) / (float)count;
+        if (energy < 0.0f) {
+            energy = 0.0f;
+        }
+
+        norm = sqrtf(ref_energy * energy);
+        if (norm > 1e-12f) {
+            float value = sqrtf(corr_i * corr_i + corr_q * corr_q) / norm;
+            if (value > *best_value) {
+                *best_value = value;
+                *best_index = i;
+            }
+        }
+
+        if (i + stride > hi) {
+            break;
+        }
+        /* Slide by one strided sample. */
+        {
+            int32_t leaving = pcm[i];
+            int32_t entering = pcm[i + span];
+            sum += entering - leaving;
+            sumsq += (int64_t)entering * (int64_t)entering
+                   - (int64_t)leaving * (int64_t)leaving;
+        }
     }
-    return sqrtf(corr_i * corr_i + corr_q * corr_q) / norm;
 }
 
 /*
@@ -406,7 +468,7 @@ static void acquire(const mcl_ap_modem_config_t *config,
     float mean_i, mean_q, energy;
     float best = -1.0f;
     size_t best_index = 0u;
-    size_t lo, hi, i;
+    size_t lo, hi;
 
     *out_index = 0u;
     *out_correlation = 0.0f;
@@ -422,20 +484,16 @@ static void acquire(const mcl_ap_modem_config_t *config,
         search = sample_count - ref_len;
     }
 
-    if (coarse_count >= 64u) {
-        float coarse_best = -1.0f;
-        size_t coarse_index = 0u;
+    if (coarse_count >= 64u && search >= stride) {
+        float coarse_best;
+        size_t coarse_index;
 
         reference_stats(ref_i, ref_q, coarse_count, stride,
                         &mean_i, &mean_q, &energy);
-        for (i = 0u; i <= search; i += stride) {
-            float value = correlate_at(ref_i, ref_q, mean_i, mean_q, energy,
-                                       pcm + i, coarse_count, stride);
-            if (value > coarse_best) {
-                coarse_best = value;
-                coarse_index = i;
-            }
-        }
+        scan(ref_i, ref_q, mean_i, mean_q, energy,
+             pcm, coarse_count, stride, 0u, search,
+             &coarse_index, &coarse_best);
+
         lo = (coarse_index > stride) ? coarse_index - stride : 0u;
         hi = coarse_index + stride;
         if (hi > search) {
@@ -447,14 +505,8 @@ static void acquire(const mcl_ap_modem_config_t *config,
     }
 
     reference_stats(ref_i, ref_q, ref_len, 1u, &mean_i, &mean_q, &energy);
-    for (i = lo; i <= hi; ++i) {
-        float value = correlate_at(ref_i, ref_q, mean_i, mean_q, energy,
-                                   pcm + i, ref_len, 1u);
-        if (value > best) {
-            best = value;
-            best_index = i;
-        }
-    }
+    scan(ref_i, ref_q, mean_i, mean_q, energy,
+         pcm, ref_len, 1u, lo, hi, &best_index, &best);
 
     *out_index = best_index;
     *out_correlation = (best > 0.0f) ? best : 0.0f;

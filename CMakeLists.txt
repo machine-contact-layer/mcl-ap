@@ -68,6 +68,27 @@ if(MCL_AP_BUILD_TESTS)
                  COMMAND mcl_ap_test_modem "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
 
+    # The host half of Experiment 004: the same three sources the DFR1154
+    # firmware compiles, without the I2S peripherals. It is what the laptop
+    # runs when the board is the other peer.
+    if(EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h" AND
+       EXISTS "${MCL_LINK_DIR}/include/mcl/link.h")
+        add_executable(mcl_ap_node
+            tools/mcl_ap_node.c
+            ${MCL_WIRE_DIR}/src/wire.c
+            ${MCL_LINK_DIR}/src/link.c)
+        target_include_directories(mcl_ap_node PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/tools
+            ${MCL_WIRE_DIR}/include
+            ${MCL_LINK_DIR}/include)
+        target_link_libraries(mcl_ap_node PRIVATE mcl_ap_modem)
+        set_target_properties(mcl_ap_node PROPERTIES
+            C_STANDARD 99
+            C_STANDARD_REQUIRED YES
+            C_EXTENSIONS NO)
+        add_test(NAME mcl_ap_node_selftest COMMAND mcl_ap_node selftest)
+    endif()
+
     add_executable(mcl_ap_test_standalone_header tests/test_standalone_header.c)
     target_link_libraries(mcl_ap_test_standalone_header PRIVATE mcl_ap_channel)
     set_target_properties(mcl_ap_test_standalone_header PROPERTIES

@@ -1,0 +1,90 @@
+﻿=== MCL-AP Experiment 004: host-to-board, payload=frame ===
+date: 2026-09-04T19:12:41+05:30
+port: COM3
+
+board: MCLNODE PONG v3
+
+source: wrote C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\004-embedded-node\evidence\e4-node-host-to-board-frame-20260904\host-source.wav: 56320 samples (1.173 s)
+source: payload FRAME bytes=24 hex=10140A11EDC00001000A10020A11EDC00000043C1105C2C4
+
+trial 01:
+           MCLNODE LISTEN captured=72000 ms=1474
+           MCLNODE LISTEN rc=5 ms=6024 acquired=1 index=11826 corr=0.695560 crc_valid=0 rx_crc=46B3 calc_crc=124E bytes=24
+           MCLNODE LISTEN NO_RECOVERY
+
+trial 02:
+           MCLNODE LISTEN captured=72000 ms=1473
+           MCLNODE LISTEN rc=5 ms=6027 acquired=1 index=7266 corr=0.874529 crc_valid=0 rx_crc=46B2 calc_crc=D861 bytes=24
+           MCLNODE LISTEN NO_RECOVERY
+
+trial 03:
+           MCLNODE LISTEN captured=72000 ms=1473
+           MCLNODE LISTEN rc=0 ms=6027 acquired=1 index=6817 corr=0.857328 crc_valid=1 rx_crc=46B2 calc_crc=46B2 bytes=24
+           MCLNODE LISTEN payload=10140A11EDC00001000A10020A11EDC00000043C1105C2C4
+           MCLNODE FRAME link_major=1 class=0 flags=0x14 source_ref=168947136 sequence=1 payload_len=10 consumed=24
+           MCLNODE OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=168947136 capability_tag=4 ttl=60
+           MCLNODE LISTEN RECOVERED
+
+trial 04:
+           MCLNODE LISTEN captured=72000 ms=1472
+           MCLNODE LISTEN rc=0 ms=6027 acquired=1 index=7507 corr=0.885122 crc_valid=1 rx_crc=46B2 calc_crc=46B2 bytes=24
+           MCLNODE LISTEN payload=10140A11EDC00001000A10020A11EDC00000043C1105C2C4
+           MCLNODE FRAME link_major=1 class=0 flags=0x14 source_ref=168947136 sequence=1 payload_len=10 consumed=24
+           MCLNODE OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=168947136 capability_tag=4 ttl=60
+           MCLNODE LISTEN RECOVERED
+
+trial 05:
+           MCLNODE LISTEN captured=72000 ms=1472
+           MCLNODE LISTEN rc=0 ms=6028 acquired=1 index=6913 corr=0.833651 crc_valid=1 rx_crc=46B2 calc_crc=46B2 bytes=24
+           MCLNODE LISTEN payload=10140A11EDC00001000A10020A11EDC00000043C1105C2C4
+           MCLNODE FRAME link_major=1 class=0 flags=0x14 source_ref=168947136 sequence=1 payload_len=10 consumed=24
+           MCLNODE OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=168947136 capability_tag=4 ttl=60
+           MCLNODE LISTEN RECOVERED
+
+trial 06:
+           MCLNODE LISTEN captured=72000 ms=1471
+           MCLNODE LISTEN rc=0 ms=6028 acquired=1 index=7032 corr=0.852434 crc_valid=1 rx_crc=46B2 calc_crc=46B2 bytes=24
+           MCLNODE LISTEN payload=10140A11EDC00001000A10020A11EDC00000043C1105C2C4
+           MCLNODE FRAME link_major=1 class=0 flags=0x14 source_ref=168947136 sequence=1 payload_len=10 consumed=24
+           MCLNODE OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=168947136 capability_tag=4 ttl=60
+           MCLNODE LISTEN RECOVERED
+
+trial 07:
+           MCLNODE LISTEN captured=72000 ms=1473
+           MCLNODE LISTEN rc=0 ms=6027 acquired=1 index=7123 corr=0.883088 crc_valid=1 rx_crc=46B2 calc_crc=46B2 bytes=24
+           MCLNODE LISTEN payload=10140A11EDC00001000A10020A11EDC00000043C1105C2C4
+           MCLNODE FRAME link_major=1 class=0 flags=0x14 source_ref=168947136 sequence=1 payload_len=10 consumed=24
+           MCLNODE OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=168947136 capability_tag=4 ttl=60
+           MCLNODE LISTEN RECOVERED
+
+trial 08:
+           MCLNODE LISTEN captured=72000 ms=1471
+           MCLNODE LISTEN rc=0 ms=6026 acquired=1 index=8789 corr=0.860042 crc_valid=1 rx_crc=46B2 calc_crc=46B2 bytes=24
+           MCLNODE LISTEN payload=10140A11EDC00001000A10020A11EDC00000043C1105C2C4
+           MCLNODE FRAME link_major=1 class=0 flags=0x14 source_ref=168947136 sequence=1 payload_len=10 consumed=24
+           MCLNODE OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=168947136 capability_tag=4 ttl=60
+           MCLNODE LISTEN RECOVERED
+
+trial 09:
+           MCLNODE LISTEN captured=72000 ms=1473
+           MCLNODE LISTEN rc=5 ms=6027 acquired=1 index=8290 corr=0.726246 crc_valid=0 rx_crc=46B2 calc_crc=DE71 bytes=24
+           MCLNODE LISTEN NO_RECOVERY
+
+trial 10:
+           MCLNODE LISTEN captured=72000 ms=1471
+           MCLNODE LISTEN rc=0 ms=6028 acquired=1 index=6927 corr=0.759441 crc_valid=1 rx_crc=46B2 calc_crc=46B2 bytes=24
+           MCLNODE LISTEN payload=10140A11EDC00001000A10020A11EDC00000043C1105C2C4
+           MCLNODE FRAME link_major=1 class=0 flags=0x14 source_ref=168947136 sequence=1 payload_len=10 consumed=24
+           MCLNODE OBJECT kind=PRESENCE consumed=10 priority=1 source_ref=168947136 capability_tag=4 ttl=60
+           MCLNODE LISTEN RECOVERED
+
+=== RESULT ===
+direction:  host-to-board
+payload:    frame
+trials:     10
+acquired:   10/10
+recovered:  7/10
+
+Acquisition and recovery are reported separately on purpose. "Heard
+nothing" and "heard something and could not read it" are different
+problems, and only the second one means a link is nearly working.

@@ -1,0 +1,11 @@
+# Build output. The image is identified by the SHA-256 in build-manifest.txt
+# and in the evidence records; committing the binary would add a second copy
+# that can drift from the sources that produced it.
+build/
+
+# Staged MCL sources. build.ps1 copies these from the canonical repositories
+# at build time and records their hashes. Committing them would create a
+# second copy of wire.c and link.c inside mcl-ap, which is exactly the drift
+# the staging step exists to prevent -- and it would make "the board runs the
+# same source the host runs" a claim rather than a fact.
+dfr1154_mcl_node/src/
