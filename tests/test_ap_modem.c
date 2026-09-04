@@ -393,7 +393,8 @@ static int regress_directory(const char *directory, int trials,
         size_t count = 0u;
         int rc;
 
-        sprintf(path, "%s/trial-%02d.wav", directory, index);
+        snprintf(path, sizeof(path), "%s/trial-%02d.wav",
+                 directory, index);
         rc = wav_read_pcm16(path, g_rx, MAX_SAMPLES, &count);
         if (rc != WAV_OK) {
             continue;
@@ -436,15 +437,18 @@ static void test_archived_captures(const char *root)
            "  instrument recovered from the same bytes is what makes this a\n"
            "  reimplementation of that waveform rather than a new one.\n");
 
-    sprintf(base, "%s/experiments/003-band-informed-candidate/evidence/"
+    snprintf(base, sizeof(base),
+             "%s/experiments/003-band-informed-candidate/evidence/"
                   "e4-board-speaker-to-laptop-mic-20260902", root);
     ran += regress_directory(base, 10, 8, "E4 board speaker -> laptop mic");
 
-    sprintf(base, "%s/experiments/003-band-informed-candidate/evidence/"
+    snprintf(base, sizeof(base),
+             "%s/experiments/003-band-informed-candidate/evidence/"
                   "dfr1154-20260902", root);
     ran += regress_directory(base, 10, 9, "E3-path candidate on board mic");
 
-    sprintf(base, "%s/experiments/003-band-informed-candidate/evidence/"
+    snprintf(base, sizeof(base),
+             "%s/experiments/003-band-informed-candidate/evidence/"
                   "laptop-realtek-20260902", root);
     ran += regress_directory(base, 10, 4, "candidate on laptop mic");
 

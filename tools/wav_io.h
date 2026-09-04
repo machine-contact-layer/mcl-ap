@@ -15,6 +15,13 @@
 #ifndef MCL_AP_WAV_IO_H
 #define MCL_AP_WAV_IO_H
 
+/* MSVC deprecates fopen in favour of fopen_s, which is not C99 and is not
+   available everywhere this has to build. The same define is used for the
+   same reason in mcl-wire/tools/validate_major1_vectors.c. */
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
