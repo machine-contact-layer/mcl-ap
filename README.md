@@ -71,6 +71,61 @@ Exact frequencies, modulation, symbol duration, and FEC parameters are **not fro
 5. Compare generic-byte protection against semantic/priority-aware protection under the same channel budget.
 6. Retain source waveforms, received captures, channel parameters, and test vectors for reproducibility.
 
+## Being called without waiting for a call
+
+Every acoustic result in this repository was, until now, a *scheduled* decode:
+a recording was started, a frame was sent into it, and the whole recording was
+handed to the decoder afterwards. Both peers knew when the exchange would
+happen. A machine doing its actual job does not — it is welding, or moving a
+pallet, or sitting in a dock, and a stranger walks up and transmits. If a
+receiver only listens during windows it chose, that call is not heard, and
+"not heard" looks exactly like "nobody was there".
+
+[`include/mcl/ap_listen.h`](include/mcl/ap_listen.h) is the receiver driven the
+other way: audio is pushed in whatever blocks the capture path produces, and
+the machine polls whenever it gets a moment.
+
+- **Acquisition is incremental, not retrospective.** Every sample is
+  correlated against the preamble once, when it first becomes searchable —
+  never once per poll. A listener therefore costs the same whether its window
+  holds two seconds or sixty, and whether it is polled once a second or a
+  hundred times. `samples_searched` reports that directly and the test asserts
+  it.
+- **The window is scheduling slack, not memory.** It is how late the machine
+  is allowed to be, so size it by the longest stretch the application can go
+  without polling.
+- **Audio dropped unheard is counted.** `samples_unscanned` is the one failure
+  a listener could hide perfectly, because a missed call and a quiet room are
+  the same silence. A machine too busy to listen says so.
+
+There is no anomaly detector and there should not be. The preamble correlator
+*is* the detector — a matched filter for exactly the thing being looked for,
+already 10/10 on real over-air captures, producing a normalized score against
+a threshold rather than a probability that needs interpreting.
+
+Streaming the archived over-air captures past the listener in small blocks,
+with no knowledge of where the frame sits, reproduces the one-shot decoder
+**exactly** — at every block size from 256 to 8192 samples:
+
+| capture set | decoded whole | streamed, 256 / 1024 / 4096 / 8192 |
+|---|--:|--:|
+| 009 handset, 10-byte object | 5/10 | 5/10 5/10 5/10 5/10 |
+| 009 handset, 24-byte frame | 2/10 | 2/10 2/10 2/10 2/10 |
+| 008 board, 10-byte object | 9/10 | 9/10 9/10 9/10 9/10 |
+| 008 board, 24-byte frame | 3/10 | 3/10 3/10 3/10 3/10 |
+
+Continuous listening costs nothing in recovery rate. Run it yourself:
+
+```text
+mcl_ap_node listen-wire  <capture.wav> [block]
+mcl_ap_node listen-frame <capture.wav> [block]
+```
+
+Hearing a call is still only reception. The listener does not decide who sent
+the frame, whether the payload is true, or that the machine owes anyone a
+reply — `reception != identity != authenticity != authority != trust !=
+obligation` is enforced above this layer and nothing here weakens it.
+
 ## Documents
 
 - [`spec/ap-v0.md`](spec/ap-v0.md) — profile architecture

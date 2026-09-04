@@ -10,7 +10,15 @@
  *   mcl_ap_node gen-wire  <out.wav>     a bare Tier-0 PRESENCE
  *   mcl_ap_node decode-frame <in.wav>   demodulate, then decode as a frame
  *   mcl_ap_node decode-wire  <in.wav>   demodulate, then decode as an object
+ *   mcl_ap_node listen-frame <in.wav> [block]   stream it past a listener
+ *   mcl_ap_node listen-wire  <in.wav> [block]   same, expecting a bare object
  *   mcl_ap_node selftest                encode and decode with no audio
+ *
+ * The decode verbs are handed the whole recording, which is how every result
+ * in this repository was produced and which assumes both peers agreed on when
+ * to transmit. The listen verbs are handed the same file in small blocks with
+ * no idea where the frame is, which is what a machine that is busy doing its
+ * job actually faces. They should agree; the listener test requires it.
  *
  * The two decode verbs are separate rather than one that sniffs. The
  * experimental AP profile carries raw Wire bytes, the node also sends complete
@@ -24,11 +32,13 @@
  */
 
 #include "mcl/ap_modem.h"
+#include "mcl/ap_listen.h"
 #include "mcl/wire.h"
 #include "mcl/link.h"
 #include "wav_io.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define MAX_SAMPLES 600000u
@@ -253,6 +263,151 @@ static int do_decode(const char *path, int as_frame)
     return 0;
 }
 
+/*
+ * Stream a capture through the continuous listener instead of handing it over
+ * whole.
+ *
+ * This is the same file and the same receiver as `decode-*`, driven the way a
+ * machine that is doing something else has to drive it: samples arrive in
+ * small blocks, nobody says where the frame is, and the decision to look is
+ * made on a timer rather than on knowing a transmission happened. It exists
+ * so the difference between "can decode a recording" and "can be called" is
+ * something a reader can run rather than a claim in a header.
+ *
+ * The block size is settable because it is the one parameter a real capture
+ * path imposes: an I2S DMA half-buffer or an audio callback decides it, not
+ * the application. Changing it must not change the verdict, and if it ever
+ * does, that is a defect in the listener and this is how it would be found.
+ */
+static int do_listen(const char *path, int as_frame, size_t block)
+{
+    static int16_t window[288000u];        /* 6.0 s of scheduling slack */
+    mcl_ap_listen_config_t config;
+    mcl_ap_listener_t listener;
+    mcl_ap_listen_event_t event;
+    uint8_t recovered[MCL_AP_MODEM_MAX_PAYLOAD_BYTES];
+    size_t count = 0u, i;
+    int contacts = 0, heard = 0;
+    int draining;
+
+    if (wav_read_pcm16(path, g_pcm, MAX_SAMPLES, &count) != WAV_OK) {
+        printf("cannot read %s as 48 kHz PCM16 mono\n", path);
+        return 2;
+    }
+    if (block == 0u) {
+        block = 1024u;
+    }
+
+    mcl_ap_listen_default_config(&config);
+    configure(&config.modem, 0);
+    if (mcl_ap_listen_init(&listener, &config, window,
+                           sizeof(window) / sizeof(window[0]))
+        != MCL_AP_LISTEN_OK) {
+        printf("listener window too small for the configured payload\n");
+        return 2;
+    }
+
+    for (i = 0u, draining = 0; i < count || draining == 1; ) {
+        mcl_ap_listen_result_t r;
+
+        if (draining == 0) {
+            const size_t n = (count - i < block) ? (count - i) : block;
+            if (mcl_ap_listen_push(&listener, g_pcm + i, n)
+                != MCL_AP_LISTEN_OK) {
+                printf("push refused\n");
+                return 2;
+            }
+            i += n;
+            if (i >= count) {
+                draining = 1;      /* the file ends; the air would not */
+            }
+        }
+
+        do {
+            r = (draining == 1 && i >= count)
+                    ? mcl_ap_listen_flush(&listener, &g_scratch, recovered,
+                                          sizeof(recovered), &event)
+                    : mcl_ap_listen_poll(&listener, &g_scratch, recovered,
+                                         sizeof(recovered), &event);
+
+            if (r == MCL_AP_LISTEN_CONTACT || r == MCL_AP_LISTEN_HEARD) {
+                printf("EVENT t=%.3fs index=%lu result=%s corr=%.6f\n",
+                       (double)event.stream_index
+                           / (double)MCL_AP_MODEM_SAMPLE_RATE_HZ,
+                       (unsigned long)event.stream_index,
+                       (r == MCL_AP_LISTEN_CONTACT) ? "CONTACT" : "HEARD",
+                       (double)event.rx.correlation);
+            }
+            if (r == MCL_AP_LISTEN_HEARD) {
+                heard++;
+            }
+            if (r == MCL_AP_LISTEN_CONTACT) {
+                contacts++;
+                printf("payload=");
+                print_hex(recovered, event.payload_bytes);
+                printf("\n");
+                if (as_frame) {
+                    mcl_link_frame_t frame;
+                    size_t consumed = 0u;
+                    if (mcl_link_frame_decode(recovered, event.payload_bytes,
+                                              &frame, &consumed) != MCL_LINK_OK
+                        || consumed != event.payload_bytes) {
+                        printf("FRAME decode=refused\n");
+                    } else {
+                        printf("FRAME link_major=%u class=%u flags=0x%02X "
+                               "source_ref=%lu sequence=%u payload_len=%u\n",
+                               (unsigned)frame.link_major,
+                               (unsigned)frame.frame_class,
+                               (unsigned)frame.flags,
+                               (unsigned long)frame.source_ref,
+                               (unsigned)frame.sequence,
+                               (unsigned)frame.payload_len);
+                        (void)report_object(frame.payload, frame.payload_len);
+                    }
+                } else {
+                    (void)report_object(recovered, event.payload_bytes);
+                }
+            }
+        } while (r == MCL_AP_LISTEN_CONTACT ||
+                 (draining == 1 && r == MCL_AP_LISTEN_HEARD));
+
+        if (draining == 1 && r != MCL_AP_LISTEN_CONTACT &&
+            r != MCL_AP_LISTEN_HEARD) {
+            draining = 2;
+            break;
+        }
+    }
+
+    /*
+     * `searched` against `pushed` is the claim that a listener costs the same
+     * whether it is polled once a second or a hundred times: it counts
+     * correlator start positions, and it must not exceed the audio itself.
+     * `unscanned` is the other half of the truth -- audio that arrived and was
+     * never looked at, which is the only way a listener can miss a call and
+     * still look healthy.
+     */
+    printf("LISTEN block=%u pushed=%lu searched=%lu unscanned=%lu "
+           "overruns=%u contacts=%u heard=%u\n",
+           (unsigned)block,
+           (unsigned long)listener.total_pushed,
+           (unsigned long)listener.samples_searched,
+           (unsigned long)listener.samples_unscanned,
+           (unsigned)listener.overruns,
+           (unsigned)listener.contacts,
+           (unsigned)listener.heard);
+
+    if (contacts > 0) {
+        printf("RESULT: RECOVERED\n");
+        return 0;
+    }
+    if (heard > 0) {
+        printf("RESULT: acquired, no recovery\n");
+        return 3;
+    }
+    printf("RESULT: not acquired\n");
+    return 4;
+}
+
 static int do_selftest(void)
 {
     uint8_t object[MCL_WIRE_TIER0_MAX_SIZE];
@@ -310,6 +465,10 @@ int main(int argc, char **argv)
     if (strcmp(argv[1], "gen-wire") == 0)     return do_gen(argv[2], 0);
     if (strcmp(argv[1], "decode-frame") == 0) return do_decode(argv[2], 1);
     if (strcmp(argv[1], "decode-wire") == 0)  return do_decode(argv[2], 0);
+    if (strcmp(argv[1], "listen-frame") == 0)
+        return do_listen(argv[2], 1, (argc > 3) ? (size_t)atoi(argv[3]) : 0u);
+    if (strcmp(argv[1], "listen-wire") == 0)
+        return do_listen(argv[2], 0, (argc > 3) ? (size_t)atoi(argv[3]) : 0u);
 
     printf("unknown verb %s\n", argv[1]);
     return 2;

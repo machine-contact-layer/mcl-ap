@@ -35,6 +35,18 @@ set_target_properties(mcl_ap_modem PROPERTIES
     C_STANDARD_REQUIRED YES
     C_EXTENSIONS NO)
 
+# The continuous listener: the same modem receiver driven by an audio stream
+# that nobody scheduled, so a machine busy doing its job can still be called.
+# Header-and-source only, no allocation, no dependency beyond the modem.
+add_library(mcl_ap_listen STATIC
+    src/ap_listen.c)
+target_include_directories(mcl_ap_listen PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(mcl_ap_listen PUBLIC mcl_ap_modem)
+set_target_properties(mcl_ap_listen PROPERTIES
+    C_STANDARD 99
+    C_STANDARD_REQUIRED YES
+    C_EXTENSIONS NO)
+
 if(MCL_AP_BUILD_TESTS)
     enable_testing()
 
@@ -81,13 +93,27 @@ if(MCL_AP_BUILD_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/tools
             ${MCL_WIRE_DIR}/include
             ${MCL_LINK_DIR}/include)
-        target_link_libraries(mcl_ap_node PRIVATE mcl_ap_modem)
+        target_link_libraries(mcl_ap_node PRIVATE mcl_ap_listen)
         set_target_properties(mcl_ap_node PROPERTIES
             C_STANDARD 99
             C_STANDARD_REQUIRED YES
             C_EXTENSIONS NO)
         add_test(NAME mcl_ap_node_selftest COMMAND mcl_ap_node selftest)
     endif()
+
+    # The listener is driven by the ARCHIVED captures as well as by synthetic
+    # streams: it must reach the same verdict, byte for byte, that the one-shot
+    # decoder reaches on the same files.
+    add_executable(mcl_ap_test_listen tests/test_ap_listen.c)
+    target_include_directories(mcl_ap_test_listen PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools)
+    target_link_libraries(mcl_ap_test_listen PRIVATE mcl_ap_listen)
+    set_target_properties(mcl_ap_test_listen PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+    add_test(NAME mcl_ap_listen_test
+             COMMAND mcl_ap_test_listen "${CMAKE_CURRENT_SOURCE_DIR}")
 
     add_executable(mcl_ap_test_standalone_header tests/test_standalone_header.c)
     target_link_libraries(mcl_ap_test_standalone_header PRIVATE mcl_ap_channel)
