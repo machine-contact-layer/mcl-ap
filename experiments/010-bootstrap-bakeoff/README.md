@@ -172,3 +172,67 @@ gcc -std=c99 -O2 -Wall -I mcl-ap/include \
 
 The target must not also link `mcl-ap`: it includes the implementation to reach
 its static DSP helpers, and linking both would define them twice.
+
+## 9. Experiment 010b: the two bootstrap objects nobody has transmitted
+
+§6 said the profile sits *below* the measured failure regime and explicitly
+refused to say it sits inside a working one, because `TRANSPORT_OFFER` (17 B)
+and `TRANSPORT_ACCEPT` (16 B) have never been sent over air and the degradation
+is superlinear.
+
+`timing_tolerance.c` closes as much of that gap as can be closed offline. It
+invents **no noise model and no SNR** — §7 of the requirements forbids treating
+synthetic impairment as selection evidence. It measures one deterministic
+property, the timing tolerance of a frame as a function of its length, using the
+**real** major-1 objects encoded by `mcl-wire`, and combines it with the
+symbol-rate errors the shipped receiver **actually produced** on the twenty
+retained board-to-host captures.
+
+| Object | bytes | bits | \|sps\| tolerance | drift at failure | of a symbol | predicted clean |
+|---|--:|--:|--:|--:|--:|--:|
+| `PRESENCE` | 10 | 104 | 0.570 | 59.3 | 0.370 | 20/20 |
+| `TRANSPORT_ACCEPT` | 16 | 152 | 0.410 | 62.3 | 0.389 | 16/20 |
+| `TRANSPORT_OFFER` | 17 | 160 | 0.390 | 62.4 | 0.390 | **14/20** |
+
+### 9.1 The mechanism, stated as a law
+
+Tolerance times bits — the accumulated timing error when the frame stops
+decoding — is 59.3, 62.3, 62.4 samples. **Near-constant, at 0.37–0.39 of a
+symbol.**
+
+That is Experiment 010's diagnosis expressed as a design rule rather than an
+observation:
+
+```text
+a frame fails when accumulated drift reaches ~0.38 of a symbol
+usable length  ~=  60 / |sps error|   bits
+```
+
+### 9.2 What it predicts, and why it is uncomfortable
+
+**The worst-case bootstrap object is marginal, not comfortable.**
+`TRANSPORT_OFFER` is predicted clean in 14 of 20 — **70%** — from the timing
+term *alone*, with everything else held perfect. Experiment 010 measured that
+roughly half the real errors at 24 bytes were **not** timing-removable, so the
+physical campaign should be expected to do worse than this line, not better.
+
+A bootstrap exchange is `PRESENCE` → `OFFER` → `ACCEPT`. A 70% ceiling on its
+largest object, before noise and before contention, is not a working rendezvous.
+So §6 was right not to claim the profile sits in a proven-good regime, and the
+FEC decision stays open rather than closed by short frames.
+
+### 9.3 It also says which remedy
+
+The estimator searches symbol rate in 0.05 steps across ±0.5 around the true
+160.0, and still returned values 0.4 and 0.45 away from truth on real captures.
+**The correct answer was inside the search grid and was not chosen.** That makes
+this a scoring problem, not a resolution problem: 16 training bits is too short
+a baseline to pin a rate.
+
+So the indicated fix is **a longer timing reference or a mid-frame pilot — not a
+finer search and not, in the first instance, coding.** A block code sized for a
+30% frame loss driven by drift would be paying airtime to carry a problem that
+better acquisition removes.
+
+That is a hypothesis with a number attached, which is what the physical campaign
+is for. It is not a selection, and `AP-BOOTSTRAP-1` remains unspecified.

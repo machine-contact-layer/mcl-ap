@@ -142,10 +142,10 @@ recovery at 10 bytes falling to 2/10 at 24.
 | Preamble form and duration | detection probability at a calibrated false-alarm rate |
 | Acquisition threshold and search bound | Pd/Pfa on real captures, including the lead-in variation that broke a fixed bound before |
 | Coding: interleaving | **evidence argues strongly against it.** Experiment 010 found errors isolated, not bursty — the burst assumption behind interleaving is not supported by any retained capture |
-| Coding: FEC | **no longer presumed necessary; decision deferred** until the 16- and 17-byte boundary is measured. Not closed, and not open in the direction it was |
-| Timing recovery | **confirmed important** — the largest single lever at 24 bytes, bounded above at 53.6%. A practical algorithm that reaches it without ground truth is still open |
+| Coding: FEC | **deferred, and 010b argues against reaching for it first.** A block code sized for a ~30% frame loss driven by drift would pay airtime to carry a problem better acquisition removes. Revisit after the timing remedy is measured over air |
+| Timing recovery | **confirmed important, and now the indicated remedy.** Experiment 010b: a frame fails when accumulated drift reaches ~0.38 of a symbol, so usable length is about 60 / \|sps error\| bits. The estimator searches in 0.05 steps across ±0.5 of the true rate and still returned values 0.4–0.45 away — **the right answer was inside the grid and was not chosen**, making this a scoring problem, not a resolution one. A longer timing reference or a mid-frame pilot, not a finer search |
 | Decision threshold placement | the measured error asymmetry |
-| Frame length ceiling | structurally fixed at <= 17 B by §2. Physical suitability of the **worst case** — the 17-byte `TRANSPORT_OFFER` and 16-byte `TRANSPORT_ACCEPT` — is still unproven and is the next campaign |
+| Frame length ceiling | structurally fixed at <= 17 B by §2. Experiment 010b now bounds the worst case from the timing term alone: `TRANSPORT_OFFER` at 17 B is predicted clean in only **14 of 20**, against 20/20 for a 10-byte `PRESENCE`. **Marginal, not comfortable**, and the physical campaign should be expected to do worse. Still the next campaign |
 | Silence, guard and turnaround intervals | the contention requirements of §3 |
 
 ## 6. The bake-off must measure structure before choosing coding

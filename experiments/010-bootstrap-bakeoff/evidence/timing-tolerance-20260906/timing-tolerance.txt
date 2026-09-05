@@ -1,0 +1,23 @@
+=== Experiment 010b: timing tolerance versus frame length ===
+
+Real major-1 objects from mcl-wire. Only the symbol rate is
+perturbed; no noise model is invented. See the file header.
+
+object              bytes   bits  |sps| tol  drift@fail  of symbol  clean/20
+------              -----   ----  ---------  ----------  ---------  --------
+PRESENCE               10    104      0.570        59.3      0.370     20/20
+TRANSPORT_ACCEPT       16    152      0.410        62.3      0.389     16/20
+TRANSPORT_OFFER        17    160      0.390        62.4      0.390     14/20
+
+DRIFT@FAIL is tolerance x bits: the accumulated timing error, in
+samples, when the frame stops decoding. It is near-constant across
+lengths, which states the mechanism as a law -- a frame fails when
+accumulated drift reaches about 0.37 of a symbol, so usable length
+is roughly 60 / |sps error| bits.
+
+The last column applies the tolerance to the symbol-rate errors
+the shipped receiver actually produced on the retained captures.
+It is a PREDICTION for the physical campaign, not a measurement of
+one: it holds only the timing term constant-perfect otherwise, and
+Experiment 010 found roughly half the errors at 24 bytes were NOT
+timing-removable. Expect the campaign to do worse than this line.
