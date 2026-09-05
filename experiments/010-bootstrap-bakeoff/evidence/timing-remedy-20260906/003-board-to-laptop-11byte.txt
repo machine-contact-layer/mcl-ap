@@ -1,0 +1,15 @@
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-01.wav  sps 160.400 -> 159.970   |err| 0.400 -> 0.030   crc ok  -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-02.wav  sps 160.450 -> 159.970   |err| 0.450 -> 0.030   crc ok  -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-03.wav  sps 159.700 -> 160.000   |err| 0.300 -> 0.000   crc ok  -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-04.wav  sps 159.650 -> 160.020   |err| 0.350 -> 0.020   crc ok  -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-05.wav  sps 159.550 -> 159.950   |err| 0.450 -> 0.050   crc BAD -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-06.wav  sps 160.100 -> 159.950   |err| 0.100 -> 0.050   crc ok  -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-07.wav  sps 160.150 -> 159.950   |err| 0.150 -> 0.050   crc ok  -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-08.wav  sps 160.150 -> 160.120   |err| 0.150 -> 0.120   crc ok  -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-09.wav  sps 160.100 -> 159.950   |err| 0.100 -> 0.050   crc ok  -> ok 
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-10.wav  sps 160.050 -> 159.950   |err| 0.050 -> 0.050   crc ok  -> ok 
+
+=== whole-frame blind rate refinement, 10 captures ===
+mean |sps error|   before 0.2500   after 0.0452
+CRC pass           before 9/10    after 10/10
+estimate improved  9   worsened 0   unchanged 1

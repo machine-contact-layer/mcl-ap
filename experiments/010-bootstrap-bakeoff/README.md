@@ -236,3 +236,62 @@ better acquisition removes.
 
 That is a hypothesis with a number attached, which is what the physical campaign
 is for. It is not a selection, and `AP-BOOTSTRAP-1` remains unspecified.
+
+## 10. Experiment 010c: the remedy, tested on real captures
+
+§9.3 said the fix is a longer estimation baseline, not a finer search. That was
+a hypothesis with a number attached. `timing_remedy.c` tests it on the retained
+captures before any hardware campaign is spent on it.
+
+The candidate estimator is **blind** — it uses no ground truth, so a receiver
+can actually run it. It maximises the mean decision margin over the whole frame:
+
+```text
+score(sps) = mean over bits of | log_ratio(bit, sps) - bias |
+```
+
+At the correct rate every symbol is sampled near its centre and the tones
+separate cleanly; at a wrong rate the later symbols straddle boundaries and the
+margin falls. That uses ~160 bits of evidence instead of 16.
+
+**It is not the `--sweep` diagnostic of §2.** That scores against the known
+payload and is an upper bound no receiver can reach. This scores against nothing
+but the signal; the payload is used only to check the CRC afterwards.
+
+| Cell | payload | CRC before | CRC after | mean \|sps err\| |
+|---|--:|--:|--:|---|
+| 008 board→host frame | 24 B | 3/10 | **5/10** | 0.155 → 0.045 |
+| 008 board→host wire | 10 B | 9/10 | **10/10** | 0.145 → 0.058 |
+| 003 board→laptop | 11 B | 9/10 | **10/10** | 0.250 → 0.045 |
+
+**Every cell improves, on two different rigs.** 21/30 to 25/30 overall, and the
+hardest cell nearly doubles. The diagnosis in §9.3 holds: it was a scoring
+problem, and 160 bits of evidence beats 16.
+
+### 10.1 The residual is probably not error
+
+After refinement the deviation from the nominal 160.0 settles at 0.045–0.058 in
+all three cells rather than going to zero.
+
+That is expected. Transmitter and receiver have independent crystals, so the
+**actual** received symbol rate is 160.0 times a clock ratio and is not exactly
+160.0. Trial 03 of the 24-byte cell is the visible case: its deviation from
+nominal grew 0.000 → 0.070 while its CRC went from failing to passing. Against
+nominal that reads as worse; against what the capture actually contains it is
+right.
+
+So "estimator error against 160.0" conflates estimator error with genuine clock
+offset, and only the first is fixable by estimation. §9's tolerance law is
+unaffected — it bounds accumulated drift regardless of cause — but the *budget*
+now has two terms, and a bootstrap profile must leave room for the one it cannot
+estimate away.
+
+### 10.2 What it changes, and what it does not
+
+It makes the timing remedy a measured improvement rather than a plausible one,
+which is what the physical campaign needed before committing airtime to it. It
+does **not** show what a rig does with a receiver running this: these are
+retained captures re-analysed, not a new link.
+
+The 16- and 17-byte objects remain unmeasured over air, contention remains
+unmeasured, no waveform is selected, and `AP-BOOTSTRAP-1` remains unspecified.

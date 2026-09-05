@@ -233,6 +233,21 @@ if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
 
+    # Experiment 010c tests the timing remedy 010b indicated, with a blind
+    # estimator a receiver could run. Same rule: includes src/ap_modem.c, so it
+    # must not also link mcl_ap.
+    add_executable(mcl_ap_exp010_timing_remedy
+        experiments/010-bootstrap-bakeoff/timing_remedy.c)
+    target_include_directories(mcl_ap_exp010_timing_remedy PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    if(NOT WIN32)
+        target_link_libraries(mcl_ap_exp010_timing_remedy PRIVATE m)
+    endif()
+    set_target_properties(mcl_ap_exp010_timing_remedy PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
     if(MCL_AP_BUILD_TESTS)
         add_test(NAME mcl_ap_exp001_unit COMMAND mcl_ap_exp001_test)
         add_test(
