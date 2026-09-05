@@ -27,8 +27,8 @@ enough to survive the pressure to add them.
 
 ```text
 PRESENCE            10 bytes
-TRANSPORT_OFFER     as encoded
-TRANSPORT_ACCEPT    as encoded
+TRANSPORT_OFFER     17 bytes   <- the worst case, and the one not yet measured
+TRANSPORT_ACCEPT    16 bytes
 ```
 
 These are the Stable kernel of `mcl-core/governance/V1_SCOPE.md` §3.2. The
@@ -49,7 +49,7 @@ observable medium and has nothing to put a session on.
 ### 2.1 Why the prohibition is structural, not advisory
 
 A profile that says "please do not send credentials here" will carry
-credentials. This one is built so that it cannot:
+credentials. This one removes the facility instead:
 
 1. The payload is a Wire major-1 Tier-0 object or it is refused. There is no
    opaque-bytes mode and no escape hatch to add one.
@@ -58,12 +58,33 @@ credentials. This one is built so that it cannot:
    inside. `research/TWO_BUILDER_AUDIT.md` §3.3: a bare Ed25519 signature alone
    is 64 bytes.
 
-The result is that first contact stays public and minimal **because it can hold
-nothing else**, which is what lets `MCL Stranger-Contact 1` promise contact
-between strangers without promising them any privacy on the acoustic medium —
-a promise the medium could not keep. Acoustic reception is proximity evidence,
-never proof of co-presence, and the medium is observable, injectable and
-relayable.
+### 2.2 What that property is, stated precisely
+
+The claim is **not** that a bootstrap frame cannot leak a credential. It cannot
+be, and a profile must not assert an information-flow guarantee its wire format
+has no way to enforce — `ARCHITECTURE_CHARTER.md` §2.11 forbids naming a
+mechanism for a property it lacks.
+
+A sender can always encode secret material covertly into ordinary fields. A
+receiver cannot determine whether a `source_ref` or an `endpoint_token` was
+derived from a private key, and no decoder can.
+
+The defensible property is:
+
+> `AP-BOOTSTRAP-1` has **no credential-bearing and no opaque-payload facility**.
+> Conforming senders **MUST NOT** encode sensitive identity, credential, key or
+> authentication material into bootstrap fields.
+
+That is a normative prohibition on senders plus the removal of the mechanism a
+*conforming* use would otherwise reach for. It is strong and it is enforceable
+at the decoder for everything except deliberate covert encoding, which is
+outside what any wire format decides.
+
+The result is that first contact stays public and minimal, which is what lets
+`MCL Stranger-Contact 1` promise contact between strangers without promising
+them any privacy on the acoustic medium — a promise the medium could not keep.
+Acoustic reception is proximity evidence, never proof of co-presence, and the
+medium is observable, injectable and relayable.
 
 ## 3. Shared air is the hard requirement
 
@@ -120,10 +141,11 @@ recovery at 10 bytes falling to 2/10 at 24.
 | Modulation and symbol rate | recovery at the bootstrap payload sizes, across devices |
 | Preamble form and duration | detection probability at a calibrated false-alarm rate |
 | Acquisition threshold and search bound | Pd/Pfa on real captures, including the lead-in variation that broke a fixed bound before |
-| Coding: FEC, repetition, interleaving | **the measured error structure** — see §6. Experiment 010 has now measured it: errors are isolated rather than bursty, so interleaving buys little; roughly half are removable by timing alone at 24 bytes and all of them at 10; the rest are marginal-SNR and would need modest block FEC sized against tail density, not mean BER |
-| Symbol timing recovery | timing error against frame length; drift is a candidate cause of the length dependence |
+| Coding: interleaving | **evidence argues strongly against it.** Experiment 010 found errors isolated, not bursty — the burst assumption behind interleaving is not supported by any retained capture |
+| Coding: FEC | **no longer presumed necessary; decision deferred** until the 16- and 17-byte boundary is measured. Not closed, and not open in the direction it was |
+| Timing recovery | **confirmed important** — the largest single lever at 24 bytes, bounded above at 53.6%. A practical algorithm that reaches it without ground truth is still open |
 | Decision threshold placement | the measured error asymmetry |
-| Frame length ceiling | the size at which recovery becomes unusable, measured |
+| Frame length ceiling | structurally fixed at <= 17 B by §2. Physical suitability of the **worst case** — the 17-byte `TRANSPORT_OFFER` and 16-byte `TRANSPORT_ACCEPT` — is still unproven and is the next campaign |
 | Silence, guard and turnaround intervals | the contention requirements of §3 |
 
 ## 6. The bake-off must measure structure before choosing coding
@@ -165,10 +187,29 @@ is roughly half accumulated timing error and half genuine marginal SNR.
 
 The consequence for this profile is §2, not a coding choice: **the strongest
 lever is frame length, and the Tier-0 ceiling already bounds it.** The 17-byte
-cap was adopted in §2.1 so that a bootstrap cannot hold a credential; it
-independently places the profile in the size regime where the modem already
-works. The 24-byte regime that motivated the search for FEC is one
-`AP-BOOTSTRAP-1` never enters.
+cap was adopted in §2.1 for a structural reason, and it independently places the
+profile **below the measured 24-byte failure regime**. The 24-byte regime that
+motivated the search for FEC is one `AP-BOOTSTRAP-1` never enters.
+
+**It does not place the profile in a regime measured to work, and this document
+must not be read as saying so.** The bootstrap exchange is not one 10-byte
+object. It is three:
+
+```text
+PRESENCE           10 bytes    measured, 0.192% BER, 9/10
+TRANSPORT_OFFER    17 bytes    NOT MEASURED
+TRANSPORT_ACCEPT   16 bytes    NOT MEASURED
+```
+
+The degradation between 10 and 24 bytes is superlinear — 2.4× the payload for
+20× the error rate — which makes interpolation to 16 and 17 bytes precisely the
+inference the data forbids. **The worst-case bootstrap objects are the ones that
+have not been measured.** Until they are, the coding decision stays open.
+
+The eventual criterion is also not raw BER. It is end-to-end contact success
+within a bounded retry window: 90% one-shot recovery is adequate with a cheap
+retry and useless if contention makes every retry expensive, so §3 and this
+section close together or not at all.
 
 ## 7. Synthetic impairment is a supplement, never the evidence
 

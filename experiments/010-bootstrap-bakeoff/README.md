@@ -110,16 +110,40 @@ already has the bound.
 largest legal payload is the 17-byte Tier-0 ceiling and its typical payload is a
 10-byte `PRESENCE`. That cap was chosen in
 `spec/ap-bootstrap-requirements-v0.1.md` §2.1 for a structural reason that has
-nothing to do with the channel: a bootstrap that *cannot* hold a credential
-cannot leak one, and a bare Ed25519 signature is 64 bytes.
+nothing to do with the channel: the profile has **no credential-bearing and no
+opaque-payload facility**, and a bare Ed25519 signature is 64 bytes. (§2.2 there
+states the property precisely: it removes the mechanism a conforming use would
+reach for and prohibits senders from encoding sensitive material into bootstrap
+fields. It is not a claim that a frame cannot leak — no wire format decides
+covert encoding.)
 
 This measurement arrives at the same bound from the opposite direction. **10
-bytes is 0.192% BER and 9/10 recovery; 24 bytes is 3.889% and 3/10.** The
-security-motivated payload cap lands the profile in the regime where this modem
-already works, and the 24-byte regime that motivated a search for FEC is a
-regime `AP-BOOTSTRAP-1` never enters.
+bytes is 0.192% BER and 9/10 recovery; 24 bytes is 3.889% and 3/10.** The cap
+places the profile **below the measured failure regime**, and the 24-byte regime
+that motivated a search for FEC is one `AP-BOOTSTRAP-1` never enters.
 
 Two independent arguments converging on one bound is worth more than either.
+
+### Below the failure regime is not the same as inside a working one
+
+The bootstrap exchange is three objects, not one:
+
+```text
+PRESENCE           10 bytes   measured    0.192% BER, 9/10
+TRANSPORT_OFFER    17 bytes   NOT MEASURED
+TRANSPORT_ACCEPT   16 bytes   NOT MEASURED
+```
+
+The degradation this experiment found is **superlinear** -- 2.4x the payload for
+20x the error rate -- so interpolating from 10/11 bytes to 16/17 is exactly the
+inference this data forbids. The worst-case bootstrap objects are the ones
+nobody has measured, and until they are the FEC decision is deferred rather than
+closed.
+
+The eventual criterion is also not raw BER but end-to-end contact success within
+a bounded retry window. 90% one-shot recovery is adequate with a cheap retry and
+useless if contention makes every retry expensive, so this closes together with
+the contention campaign or not at all.
 
 ## 7. What this does NOT establish
 

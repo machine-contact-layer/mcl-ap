@@ -253,8 +253,13 @@ recovery is the largest single lever at 24 bytes but caps at 53.6%; and the rest
 is genuine marginal SNR needing modest FEC sized against tail density.
 
 **The dominant lever is none of those. It is frame length**, and
-`AP-BOOTSTRAP-1` already caps its payload at the 17-byte Tier-0 ceiling — a
-bound adopted so a bootstrap cannot carry a credential, which independently
-places the profile in the regime where the modem already works.
+`AP-BOOTSTRAP-1` already caps its payload at the 17-byte Tier-0 ceiling, which
+places it **below the measured failure regime**.
+
+Below it -- not inside a regime measured to work. The bootstrap exchange is
+`PRESENCE` 10 B, `TRANSPORT_OFFER` **17 B** and `TRANSPORT_ACCEPT` **16 B**, and
+only the 10-byte object has been measured. Degradation is superlinear, so
+interpolating to 16/17 is the one inference this data forbids. The FEC decision
+is deferred, not closed.
 
 Selects nothing. AP-B0 remains **NOT selected** and MCL-AP remains Experimental.
