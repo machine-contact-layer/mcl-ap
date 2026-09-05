@@ -1,0 +1,36 @@
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-01.wav  corr=0.883 sps=160.400 phase= +4  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-02.wav  corr=0.884 sps=160.450 phase= +4  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-03.wav  corr=0.883 sps=159.700 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-04.wav  corr=0.885 sps=159.650 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-05.wav  corr=0.889 sps=159.550 phase= +4  errors=4/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-06.wav  corr=0.884 sps=160.100 phase= +8  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-07.wav  corr=0.883 sps=160.150 phase= +6  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-08.wav  corr=0.883 sps=160.150 phase= +6  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-09.wav  corr=0.885 sps=160.100 phase= +8  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/e4-board-speaker-to-laptop-mic-20260902/trial-10.wav  corr=0.888 sps=160.050 phase= +8  errors=0/112
+
+=== corpus ===
+captures read      10
+acquired           10
+error-free         9
+bits compared      1120
+bit errors         4  (0.357%)
+
+=== asymmetry ===
+sent 0, read 1     0
+sent 1, read 0     4
+dominant direction 100.0% of errors
+
+=== position ===
+bit span observed  112
+first  half error  0.000%  (0/560)
+second half error  0.714%  (4/560)
+per-bit errors (index:count, non-zero only)
+  71:1 79:1 103:1 106:1 
+
+=== burst structure ===
+run of 1           4
+
+=== decision margin ===
+mean |margin| correct  5.4092
+mean |margin| errored  0.5614

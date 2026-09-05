@@ -195,6 +195,28 @@ if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
 
+    # Experiment 010 measures the bit-error structure of the retained corpus so
+    # that a coding scheme for AP-BOOTSTRAP-1 is chosen from evidence rather
+    # than from assumption.
+    #
+    # It links NO mcl_ap target on purpose. The per-bit soft value it needs is
+    # internal to the decoder, so it includes src/ap_modem.c directly; linking
+    # the library as well would define every one of those symbols twice. The
+    # alternative -- reimplementing the acquisition, timing search and Goertzel
+    # demodulation here -- would measure a second modem resembling the first,
+    # and any difference between them would be indistinguishable from a result.
+    add_executable(mcl_ap_exp010_error_structure
+        experiments/010-bootstrap-bakeoff/error_structure.c)
+    target_include_directories(mcl_ap_exp010_error_structure PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    if(NOT WIN32)
+        target_link_libraries(mcl_ap_exp010_error_structure PRIVATE m)
+    endif()
+    set_target_properties(mcl_ap_exp010_error_structure PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
     if(MCL_AP_BUILD_TESTS)
         add_test(NAME mcl_ap_exp001_unit COMMAND mcl_ap_exp001_test)
         add_test(

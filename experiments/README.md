@@ -223,3 +223,38 @@ transmitters, the same shape of degradation: the payload length is doing this.
 
 **Not a usable link, and not claimed as one.** AP-B0 remains **NOT selected**
 and MCL-AP remains Experimental.
+
+## Experiment 010 — bit-error structure of the retained corpus
+
+Offline. No transmission, no hardware, no new claim about a link.
+
+Experiments 008 and 009 both recorded the same shape of failure — recovery
+collapsing as the payload grew, from two unrelated transmitters — and neither
+said *why*. Experiment 010 measures it, because
+`spec/ap-bootstrap-requirements-v0.1.md` §6 forbids choosing a coding scheme for
+`AP-BOOTSTRAP-1` before the error structure is known: the four plausible causes
+call for four remedies that are not interchangeable, and adding FEC to a timing
+problem costs airtime and buys nothing.
+
+Four cells, exact ground truth taken from each campaign's own run log:
+
+| Payload | BER | Clean | Errors in 2nd half | Timing-removable |
+|--:|--:|--:|---|--:|
+| 10 B | 0.192% | 9/10 | all | 100% |
+| 11 B | 0.357% | 9/10 | all | — |
+| 24 B | 3.889% | 3/10 | 3.9x the 1st half | 53.6% |
+
+Errors are **isolated rather than bursty**, **asymmetric** (77-100% one way),
+**low-margin**, and **concentrated in the frame tail**. 2.4x the payload gives
+20x the bit error rate.
+
+So interleaving buys little and the burst assumption behind it is wrong; timing
+recovery is the largest single lever at 24 bytes but caps at 53.6%; and the rest
+is genuine marginal SNR needing modest FEC sized against tail density.
+
+**The dominant lever is none of those. It is frame length**, and
+`AP-BOOTSTRAP-1` already caps its payload at the 17-byte Tier-0 ceiling — a
+bound adopted so a bootstrap cannot carry a credential, which independently
+places the profile in the regime where the modem already works.
+
+Selects nothing. AP-B0 remains **NOT selected** and MCL-AP remains Experimental.

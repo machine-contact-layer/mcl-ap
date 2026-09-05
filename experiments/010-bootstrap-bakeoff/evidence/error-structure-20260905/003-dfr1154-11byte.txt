@@ -1,0 +1,33 @@
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-01.wav  NOT_ACQUIRED  corr=0.074
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-02.wav  corr=0.609 sps=159.500 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-03.wav  corr=0.551 sps=159.500 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-04.wav  corr=0.627 sps=159.500 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-05.wav  corr=0.602 sps=159.500 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-06.wav  corr=0.624 sps=160.000 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-07.wav  corr=0.565 sps=159.500 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-08.wav  corr=0.563 sps=159.500 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-09.wav  corr=0.565 sps=159.500 phase= +0  errors=0/112
+mcl-ap/experiments/003-band-informed-candidate/evidence/dfr1154-20260902/trial-10.wav  corr=0.565 sps=159.500 phase= +0  errors=0/112
+
+=== corpus ===
+captures read      10
+acquired           9
+error-free         9
+bits compared      1008
+bit errors         0  (0.000%)
+
+=== asymmetry ===
+sent 0, read 1     0
+sent 1, read 0     0
+
+=== position ===
+bit span observed  112
+first  half error  0.000%  (0/504)
+second half error  0.000%  (0/504)
+per-bit errors (index:count, non-zero only)
+  
+
+=== burst structure ===
+
+=== decision margin ===
+mean |margin| correct  4.7636

@@ -1,0 +1,42 @@
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-01.wav  corr=0.777 sps=160.100 phase= +6  errors=6/216   | best=1 at sps=160.221 phase=-27  drift=26.2 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-02.wav  corr=0.819 sps=160.150 phase= +8  errors=3/216   | best=0 at sps=160.376 phase=-46  drift=48.9 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-03.wav  corr=0.818 sps=160.000 phase=+10  errors=1/216   | best=0 at sps=160.291 phase=-49  drift=62.9 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-04.wav  corr=0.797 sps=159.800 phase= +2  errors=10/216   | best=3 at sps=160.176 phase=-16  drift=81.2 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-05.wav  corr=0.794 sps=160.050 phase=+10  errors=0/216   | best=0 at sps=160.486 phase=-54  drift=94.3 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-06.wav  corr=0.786 sps=160.400 phase=+10  errors=35/216   | best=21 at sps=160.251 phase=-31  drift=-32.1 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-07.wav  corr=0.815 sps=160.450 phase= +8  errors=14/216   | best=9 at sps=160.211 phase=-33  drift=-51.6 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-08.wav  corr=0.548 sps=160.000 phase=+16  errors=0/216   | best=0 at sps=160.341 phase=-50  drift=73.7 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-09.wav  corr=0.570 sps=160.100 phase=+12  errors=0/216   | best=0 at sps=160.436 phase=-51  drift=72.7 samples
+mcl-ap/experiments/008-embedded-node/evidence/e4-node-board-to-host-frame-20260904/trial-10.wav  corr=0.878 sps=160.100 phase= +8  errors=15/216   | best=5 at sps=160.046 phase= -4  drift=-11.7 samples
+
+=== corpus ===
+captures read      10
+acquired           10
+error-free         3
+bits compared      2160
+bit errors         84  (3.889%)
+
+=== asymmetry ===
+sent 0, read 1     19
+sent 1, read 0     65
+dominant direction 77.4% of errors
+
+=== position ===
+bit span observed  216
+first  half error  1.574%  (17/1080)
+second half error  6.204%  (67/1080)
+per-bit errors (index:count, non-zero only)
+  15:1 35:1 45:1 47:2 48:1 49:1 58:1 62:1 87:1 100:2 102:2 107:3 118:2 124:2 125:1 127:2 128:1 129:1 130:1 132:2 135:2 139:2 142:2 144:1 145:1 146:1 147:1 148:1 149:1 173:5 177:1 178:3 179:3 180:3 181:2 184:1 185:2 187:1 189:1 190:1 191:1 192:1 195:2 197:1 198:1 199:1 200:1 201:1 202:3 204:1 205:4 208:1 209:1 210:1 
+
+=== burst structure ===
+run of 1           58
+run of 2           4
+run of 3           2
+run of 4           3
+
+=== timing sweep ===
+errors removable by a better timing estimate alone  45 of 84 (53.6%)
+
+=== decision margin ===
+mean |margin| correct  3.1120
+mean |margin| errored  0.6429
