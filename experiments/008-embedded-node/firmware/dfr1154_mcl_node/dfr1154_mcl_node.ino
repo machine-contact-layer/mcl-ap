@@ -255,13 +255,212 @@ void selftest() {
 
 /* ------------------------------------------------------------------ send */
 
+/*
+ * THE BAND IS SETTABLE FROM THE HOST, AND WHY
+ *
+ * Experiment 011 has to measure the bootstrap objects across more than one FSK
+ * pair. The modem default -- 3000/6000 Hz -- was measured on THIS board's
+ * speaker, and the AP band registry records that it must not be standardised on
+ * the strength of one campaign. Recompiling and reflashing between bands would
+ * make the band and the firmware image vary together, so a difference between
+ * two cells could be either one.
+ *
+ * Zero leaves the modem default alone. The chirp moves with the pair, because a
+ * preamble that sweeps a region the payload never uses acquires on energy that
+ * says nothing about whether the payload will survive.
+ */
+static float g_band_f0 = 0.0f;
+static float g_band_f1 = 0.0f;
+
+/*
+ * EMISSION GAIN, AND WHY IT IS A RIG CONTROL RATHER THAN A MODEM ONE
+ *
+ * The waveform is not changed by this. The encoder still produces the same
+ * full-scale PCM the specification describes; this scales the samples on their
+ * way to the amplifier, which is what turning a speaker down does. Putting it
+ * in the modem would make the emitted amplitude part of the protocol, and it
+ * is not: two implementations at different volumes are both conforming.
+ *
+ * It exists because these campaigns run in rooms with people in them. The
+ * receiver's input gain is converged automatically by the host rig, so a
+ * quieter emission is met by a higher capture gain and the recorded peak lands
+ * in the same window either way -- the signal-to-noise ratio changes, and that
+ * change is a property of the cell, which is why the gain is written into
+ * every run log rather than left implicit.
+ *
+ * 1.0 is unscaled. Values above 1.0 are refused: the encoder already reaches
+ * full scale, so amplifying can only clip.
+ */
+static float g_emit_gain = 1.0f;
+
+static void apply_band(mcl_ap_modem_config_t *config) {
+  if (g_band_f0 > 0.0f && g_band_f1 > 0.0f) {
+    config->fsk_freq_0_hz = g_band_f0;
+    config->fsk_freq_1_hz = g_band_f1;
+    config->preamble_f_start_hz = g_band_f0 - 1000.0f;
+    config->preamble_f_end_hz = g_band_f1;
+    if (config->preamble_f_start_hz < 500.0f) {
+      config->preamble_f_start_hz = 500.0f;
+    }
+  }
+}
+
+/*
+ * Modulate and emit an arbitrary payload.
+ *
+ * `send` below builds a PRESENCE and calls this; SEND HEX hands it bytes the
+ * host chose. Sharing one transmit path is deliberate: if SEND HEX had its own
+ * copy, a difference between a HEX cell and a WIRE cell could be the payload or
+ * could be the second copy, and the experiment could not tell which.
+ */
+static void transmit(const uint8_t *payload, size_t payload_len,
+                     const char *label) {
+  mcl_ap_modem_config_t config;
+  size_t samples = 0;
+
+  if (!speaker_ready) {
+    Serial.println("MCLNODE ERROR AMP_NOT_READY");
+    return;
+  }
+
+  mcl_ap_modem_default_config(&config);
+  config.trailing_silence_s = 0.10f;
+  apply_band(&config);
+
+  if (mcl_ap_modem_encode(&config, payload, payload_len,
+                          g_audio, kAudioSamples, &samples)
+      != MCL_AP_MODEM_OK) {
+    Serial.printf("MCLNODE ERROR MODULATE need=%u have=%u\n",
+                  static_cast<unsigned>(
+                      mcl_ap_modem_encoded_samples(&config, payload_len)),
+                  static_cast<unsigned>(kAudioSamples));
+    return;
+  }
+
+  /* Scaled after encoding, so what went out is the specified waveform at a
+     lower level rather than a different waveform. */
+  if (g_emit_gain < 0.999f) {
+    for (size_t k = 0; k < samples; ++k) {
+      g_audio[k] = static_cast<int16_t>(static_cast<float>(g_audio[k]) * g_emit_gain);
+    }
+  }
+
+  Serial.printf("MCLNODE SEND %s bytes=%u samples=%u band=%u/%u gain=%u%% hex=",
+                label,
+                static_cast<unsigned>(payload_len),
+                static_cast<unsigned>(samples),
+                static_cast<unsigned>(config.fsk_freq_0_hz),
+                static_cast<unsigned>(config.fsk_freq_1_hz),
+                static_cast<unsigned>(g_emit_gain * 100.0f + 0.5f));
+  print_hex(payload, payload_len);
+  Serial.println();
+  Serial.println("MCLNODE SEND ARMED");
+  Serial.flush();
+
+  /* The same 500 ms guard firmware v2 uses, so the host recorder is running
+     before any sound is emitted. */
+  delay(500);
+  digitalWrite(kActivityLedPin, HIGH);
+
+  const size_t chunk = 512;
+  size_t emitted = 0;
+  while (emitted < samples) {
+    size_t count = (samples - emitted < chunk) ? (samples - emitted) : chunk;
+    speaker.write(reinterpret_cast<uint8_t *>(g_audio + emitted),
+                  count * sizeof(int16_t));
+    emitted += count;
+  }
+  digitalWrite(kActivityLedPin, LOW);
+  Serial.println("MCLNODE SEND DONE");
+}
+
+static int hex_nibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+/*
+ * SEND HEX <hex>. The bytes are transmitted exactly as given and are NOT
+ * validated as a Tier-0 object: this command is how the host puts a
+ * TRANSPORT_OFFER or a deliberately malformed frame on the air, and a firmware
+ * that silently corrected either would make the experiment measure the
+ * firmware's opinion instead of the channel.
+ */
+static void send_hex(const String &hex) {
+  uint8_t payload[MCL_AP_MODEM_MAX_PAYLOAD_BYTES];
+  size_t n = 0;
+  int hi = -1;
+
+  for (unsigned i = 0; i < hex.length(); ++i) {
+    char c = hex[i];
+    if (c == ' ' || c == '\t' || c == '\r') continue;
+    int v = hex_nibble(c);
+    if (v < 0) {
+      Serial.println("MCLNODE ERROR HEX_CHAR");
+      return;
+    }
+    if (hi < 0) { hi = v; continue; }
+    if (n >= sizeof(payload)) {
+      Serial.println("MCLNODE ERROR HEX_TOO_LONG");
+      return;
+    }
+    payload[n++] = static_cast<uint8_t>((hi << 4) | v);
+    hi = -1;
+  }
+  if (hi >= 0 || n == 0) {
+    Serial.println("MCLNODE ERROR HEX_LENGTH");
+    return;
+  }
+  transmit(payload, n, "HEX");
+}
+
+/* GAIN <percent>, 1..100. Scales the emitted level only; see g_emit_gain. */
+static void set_gain(const String &args) {
+  long pct = args.toInt();
+
+  if (pct < 1 || pct > 100) {
+    Serial.println("MCLNODE ERROR GAIN_RANGE");
+    return;
+  }
+  g_emit_gain = static_cast<float>(pct) / 100.0f;
+  Serial.printf("MCLNODE GAIN %u%%\n", static_cast<unsigned>(pct));
+}
+
+/* BAND <f0> <f1>, in Hz. BAND 0 0 restores the modem default. */
+static void set_band(const String &args) {
+  int sep = args.indexOf(' ');
+  float f0, f1;
+
+  if (sep < 0) {
+    Serial.println("MCLNODE ERROR BAND_ARGS");
+    return;
+  }
+  f0 = args.substring(0, sep).toFloat();
+  f1 = args.substring(sep + 1).toFloat();
+  if (f0 == 0.0f && f1 == 0.0f) {
+    g_band_f0 = 0.0f;
+    g_band_f1 = 0.0f;
+    Serial.println("MCLNODE BAND default");
+    return;
+  }
+  /* The modem samples at 48 kHz. A tone near Nyquist is not a band. */
+  if (f0 < 500.0f || f1 <= f0 || f1 > 20000.0f) {
+    Serial.println("MCLNODE ERROR BAND_RANGE");
+    return;
+  }
+  g_band_f0 = f0;
+  g_band_f1 = f1;
+  Serial.printf("MCLNODE BAND %u/%u\n",
+                static_cast<unsigned>(f0), static_cast<unsigned>(f1));
+}
+
 void send(bool as_frame, uint16_t sequence) {
   uint8_t object[MCL_WIRE_TIER0_MAX_SIZE];
   uint8_t frame[64];
   const uint8_t *payload;
   size_t payload_len;
-  mcl_ap_modem_config_t config;
-  size_t samples = 0;
 
   if (!speaker_ready) {
     Serial.println("MCLNODE ERROR AMP_NOT_READY");
@@ -285,53 +484,18 @@ void send(bool as_frame, uint16_t sequence) {
     payload = frame;
   }
 
-  mcl_ap_modem_default_config(&config);
   /*
-   * Trailing silence trimmed from 0.5 s to 0.1 s for transmit only.
-   *
-   * It is padding, not signal: the receiver locates the payload from the
-   * preamble and needs its own capture to extend past the last symbol, not
-   * the transmitter's silence. Trimming it is what lets a 24-byte Link frame
-   * -- 56320 samples -- share the 72000-sample buffer with the receiver.
+   * Trailing silence is trimmed from 0.5 s to 0.1 s for transmit, inside
+   * transmit(): it is padding, not signal. The receiver locates the payload
+   * from the preamble and needs its own capture to extend past the last
+   * symbol, not the transmitter's silence. Trimming it is what lets a 24-byte
+   * Link frame -- 56320 samples -- share the 72000-sample buffer with the
+   * receiver.
    *
    * This is a departure from the Experiment 003 waveform and it is why the
    * results here are not directly comparable to that evidence.
    */
-  config.trailing_silence_s = 0.10f;
-  if (mcl_ap_modem_encode(&config, payload, payload_len,
-                          g_audio, kAudioSamples, &samples)
-      != MCL_AP_MODEM_OK) {
-    Serial.printf("MCLNODE ERROR MODULATE need=%u have=%u\n",
-                  static_cast<unsigned>(
-                      mcl_ap_modem_encoded_samples(&config, payload_len)),
-                  static_cast<unsigned>(kAudioSamples));
-    return;
-  }
-
-  Serial.printf("MCLNODE SEND %s bytes=%u samples=%u hex=",
-                as_frame ? "FRAME" : "WIRE",
-                static_cast<unsigned>(payload_len),
-                static_cast<unsigned>(samples));
-  print_hex(payload, payload_len);
-  Serial.println();
-  Serial.println("MCLNODE SEND ARMED");
-  Serial.flush();
-
-  /* The same 500 ms guard firmware v2 uses, so the host recorder is running
-     before any sound is emitted. */
-  delay(500);
-  digitalWrite(kActivityLedPin, HIGH);
-
-  const size_t chunk = 512;
-  size_t emitted = 0;
-  while (emitted < samples) {
-    size_t count = (samples - emitted < chunk) ? (samples - emitted) : chunk;
-    speaker.write(reinterpret_cast<uint8_t *>(g_audio + emitted),
-                  count * sizeof(int16_t));
-    emitted += count;
-  }
-  digitalWrite(kActivityLedPin, LOW);
-  Serial.println("MCLNODE SEND DONE");
+  transmit(payload, payload_len, as_frame ? "FRAME" : "WIRE");
 }
 
 /* ---------------------------------------------------------------- listen */
@@ -377,7 +541,10 @@ void listen(bool as_frame, float seconds) {
     return;
   }
 
+  /* The receiver follows the band the host set, or the decode would look for
+     the payload in a region the transmitter is not using. */
   mcl_ap_modem_default_config(&config);
+  apply_band(&config);
   started = millis();
   mcl_ap_modem_status_t rc = mcl_ap_modem_decode(&config, g_audio, got,
                                                  &g_scratch, recovered,
@@ -467,9 +634,15 @@ void loop() {
   command.trim();
 
   if (command == "PING") {
-    Serial.println("MCLNODE PONG v3");
+    Serial.println("MCLNODE PONG v4");
   } else if (command == "SELFTEST") {
     selftest();
+  } else if (command.startsWith("SEND HEX ")) {
+    send_hex(command.substring(9));
+  } else if (command.startsWith("BAND ")) {
+    set_band(command.substring(5));
+  } else if (command.startsWith("GAIN ")) {
+    set_gain(command.substring(5));
   } else if (command == "SEND FRAME") {
     send(true, 1u);
   } else if (command == "SEND WIRE") {

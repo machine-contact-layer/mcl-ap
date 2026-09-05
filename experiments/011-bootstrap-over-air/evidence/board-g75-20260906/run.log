@@ -1,0 +1,95 @@
+=== MCL-AP Experiment 011: bootstrap objects over air ===
+date:       2026-09-06T04:36:58+05:30
+rig:        board
+microphone: Microphone Array (Realtek(R) Audio)
+port:       COM3
+emit gain:  75% of full scale (rig control; the waveform is unchanged)
+input cap:  capture gain <= 0.15, to keep the amplifier transient unclipped
+clock:      board and host oscillators are independent -- this rig
+            carries the clock term host-loopback cannot show
+waveform:   FSK 3000/6000 Hz (modem default), 300 baud, 48 kHz
+
+board:      MCLNODE PONG v4
+gain:       MCLNODE GAIN 75%
+
+--- cell presence (10 bytes) expected=10020A11EDC00000043C ---
+source: wrote C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\011-bootstrap-over-air\evidence\board-g75-20260906\source-presence.wav: 38400 samples (0.800 s) band 3000/6000 chirp 2000-6000
+source: payload PRESENCE bytes=10 hex=10020A11EDC00000043C
+  level probe 1: capture gain 0.205 -> peak   -1.9 dB
+  level probe 2: capture gain 0.113 -> peak   -6.3 dB
+  capture gain settled at 0.113 (was 0.205)
+  presence 01 rc=0 peak=-6.2 dB   .\presence-trial-01.wav acquired=1 corr=0.870 sps 159.850->159.920  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 02 rc=0 peak=-6.7 dB   .\presence-trial-02.wav acquired=1 corr=0.860 sps 159.800->159.940  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 03 rc=1 peak=-7.7 dB   .\presence-trial-03.wav acquired=1 corr=0.859 sps 159.900->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+  presence 04 rc=0 peak=-7.2 dB   .\presence-trial-04.wav acquired=1 corr=0.856 sps 159.900->159.920  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 05 rc=0 peak=-7.1 dB   .\presence-trial-05.wav acquired=1 corr=0.855 sps 159.750->160.020  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 06 rc=1 peak=-7.7 dB   .\presence-trial-06.wav acquired=1 corr=0.858 sps 159.700->159.920  stock=BAD obj=--   refined=ok  obj=ok 
+  presence 07 rc=0 peak=-7.7 dB   .\presence-trial-07.wav acquired=1 corr=0.854 sps 159.700->160.060  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 08 rc=1 peak=-7.2 dB   .\presence-trial-08.wav acquired=1 corr=0.858 sps 159.700->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+  presence 09 rc=1 peak=-6.6 dB   .\presence-trial-09.wav acquired=1 corr=0.764 sps 159.700->160.010  stock=BAD obj=--   refined=ok  obj=ok 
+  presence 10 rc=0 peak=-7.1 dB   .\presence-trial-10.wav acquired=1 corr=0.857 sps 159.950->159.990  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 11 rc=1 peak=-7.0 dB   .\presence-trial-11.wav acquired=1 corr=0.852 sps 159.700->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+  presence 12 rc=0 peak=-7.2 dB   .\presence-trial-12.wav acquired=1 corr=0.855 sps 159.950->159.960  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 13 rc=0 peak=-7.1 dB   .\presence-trial-13.wav acquired=1 corr=0.853 sps 159.950->159.970  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 14 rc=0 peak=-7.2 dB   .\presence-trial-14.wav acquired=1 corr=0.857 sps 159.950->160.030  stock=ok  obj=ok   refined=ok  obj=ok 
+  presence 15 rc=1 peak=-7.0 dB   .\presence-trial-15.wav acquired=1 corr=0.854 sps 159.700->160.140  stock=BAD obj=--   refined=ok  obj=ok 
+
+  presence : acquired 15/15   shipped receiver 9/15   blind refinement 15/15
+
+--- cell accept (16 bytes) expected=180A0A11EDC000C0FFEE03010D0C0DE5 ---
+source: wrote C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\011-bootstrap-over-air\evidence\board-g75-20260906\source-accept.wav: 46080 samples (0.960 s) band 3000/6000 chirp 2000-6000
+source: payload TRANSPORT_ACCEPT bytes=16 hex=180A0A11EDC000C0FFEE03010D0C0DE5
+  level probe 1: capture gain 0.113 -> peak   -6.8 dB
+  capture gain settled at 0.113 (was 0.205)
+  accept 01 rc=0 peak=-7.0 dB   .\accept-trial-01.wav acquired=1 corr=0.851 sps 159.900->159.940  stock=ok  obj=ok   refined=ok  obj=ok 
+  accept 02 rc=1 peak=-6.6 dB   .\accept-trial-02.wav acquired=1 corr=0.856 sps 159.750->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+  accept 03 rc=0 peak=-7.1 dB   .\accept-trial-03.wav acquired=1 corr=0.859 sps 159.950->159.950  stock=ok  obj=ok   refined=ok  obj=ok 
+  accept 04 rc=0 peak=-7.2 dB   .\accept-trial-04.wav acquired=1 corr=0.854 sps 160.100->159.940  stock=ok  obj=ok   refined=ok  obj=ok 
+  accept 05 rc=0 peak=-7.4 dB   .\accept-trial-05.wav acquired=1 corr=0.856 sps 159.800->159.930  stock=ok  obj=ok   refined=ok  obj=ok 
+  accept 06 rc=1 peak=-6.9 dB   .\accept-trial-06.wav acquired=1 corr=0.857 sps 159.600->159.980  stock=BAD obj=--   refined=ok  obj=ok 
+  accept 07 rc=0 peak=-6.8 dB   .\accept-trial-07.wav acquired=1 corr=0.850 sps 160.000->159.940  stock=ok  obj=ok   refined=ok  obj=ok 
+  accept 08 rc=1 peak=-6.9 dB   .\accept-trial-08.wav acquired=1 corr=0.857 sps 159.750->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+  accept 09 rc=0 peak=-7.3 dB   .\accept-trial-09.wav acquired=1 corr=0.858 sps 159.950->159.940  stock=ok  obj=ok   refined=ok  obj=ok 
+  accept 10 rc=1 peak=-7.2 dB   .\accept-trial-10.wav acquired=1 corr=0.857 sps 159.700->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+  accept 11 rc=0 peak=-7.3 dB   .\accept-trial-11.wav acquired=1 corr=0.856 sps 159.950->159.940  stock=ok  obj=ok   refined=ok  obj=ok 
+  accept 12 rc=1 peak=-7.1 dB   .\accept-trial-12.wav acquired=1 corr=0.857 sps 159.800->159.930  stock=BAD obj=--   refined=ok  obj=ok 
+  accept 13 rc=0 peak=-7.3 dB   .\accept-trial-13.wav acquired=1 corr=0.857 sps 159.850->159.920  stock=ok  obj=ok   refined=ok  obj=ok 
+  accept 14 rc=1 peak=-6.7 dB   .\accept-trial-14.wav acquired=1 corr=0.851 sps 159.700->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+  accept 15 rc=1 peak=-7.2 dB   .\accept-trial-15.wav acquired=1 corr=0.854 sps 159.700->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+
+  accept : acquired 15/15   shipped receiver 8/15   blind refinement 15/15
+
+--- cell offer (17 bytes) expected=18020A11EDC000C0FFEE03015E1EC7ED3C ---
+source: wrote C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\011-bootstrap-over-air\evidence\board-g75-20260906\source-offer.wav: 47360 samples (0.987 s) band 3000/6000 chirp 2000-6000
+source: payload TRANSPORT_OFFER bytes=17 hex=18020A11EDC000C0FFEE03015E1EC7ED3C
+  level probe 1: capture gain 0.113 -> peak   -7.3 dB
+  capture gain settled at 0.113 (was 0.205)
+  offer 01 rc=1 peak=-6.9 dB   .\offer-trial-01.wav acquired=1 corr=0.858 sps 160.400->159.970  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 02 rc=0 peak=-6.9 dB   .\offer-trial-02.wav acquired=1 corr=0.856 sps 159.850->159.930  stock=ok  obj=ok   refined=ok  obj=ok 
+  offer 03 rc=1 peak=-6.5 dB   .\offer-trial-03.wav acquired=1 corr=0.859 sps 159.700->160.000  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 04 rc=1 peak=-7.2 dB   .\offer-trial-04.wav acquired=1 corr=0.857 sps 159.800->159.920  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 05 rc=1 peak=-6.9 dB   .\offer-trial-05.wav acquired=1 corr=0.858 sps 159.750->159.930  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 06 rc=1 peak=-7.2 dB   .\offer-trial-06.wav acquired=1 corr=0.858 sps 160.400->159.970  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 07 rc=0 peak=-6.4 dB   .\offer-trial-07.wav acquired=1 corr=0.854 sps 160.250->159.960  stock=ok  obj=ok   refined=ok  obj=ok 
+  offer 08 rc=1 peak=-7.0 dB   .\offer-trial-08.wav acquired=1 corr=0.860 sps 159.700->160.010  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 09 rc=1 peak=-6.6 dB   .\offer-trial-09.wav acquired=1 corr=0.887 sps 159.550->159.950  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 10 rc=3 peak=-23.7 dB  .\offer-trial-10.wav acquired=1 corr=0.560 sps 159.900->160.040  stock=BAD obj=--   refined=BAD obj=-- 
+  offer 11 rc=1 peak=-5.9 dB   .\offer-trial-11.wav acquired=1 corr=0.830 sps 159.850->159.940  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 12 rc=1 peak=-5.1 dB   .\offer-trial-12.wav acquired=1 corr=0.833 sps 159.700->159.920  stock=BAD obj=--   refined=ok  obj=ok 
+  offer 13 rc=0 peak=-5.5 dB   .\offer-trial-13.wav acquired=1 corr=0.807 sps 159.800->159.910  stock=ok  obj=ok   refined=ok  obj=ok 
+  offer 14 rc=0 peak=-3.5 dB   .\offer-trial-14.wav acquired=1 corr=0.783 sps 160.300->159.930  stock=ok  obj=ok   refined=ok  obj=ok 
+  offer 15 rc=1 peak=-6.1 dB   .\offer-trial-15.wav acquired=1 corr=0.801 sps 159.650->159.870  stock=BAD obj=--   refined=ok  obj=ok 
+
+  offer : acquired 15/15   shipped receiver 4/15   blind refinement 14/15
+
+SUMMARY
+  cell      bytes    acquired     shipped     refined
+  presence     10       15/15        9/15       15/15
+  accept       16       15/15        8/15       15/15
+  offer        17       15/15        4/15       14/15
+
+Acquired, shipped and refined are counted separately on purpose. A cell
+that acquires and does not recover is a channel result; a cell that does
+not acquire at all is usually the harness, and the peak level says which.
+Shipped and refined come from the SAME capture, so their difference is the
+estimator and nothing else.

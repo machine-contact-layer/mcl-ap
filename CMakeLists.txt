@@ -248,6 +248,25 @@ if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
 
+    # Experiment 011 transmits the three major-1 bootstrap objects over air and
+    # decodes each capture TWICE -- once with the shipped receiver and once with
+    # the blind refinement 010c proposed -- so the remedy is measured on the same
+    # signal rather than compared across two rooms. It encodes the objects with
+    # mcl-wire, so it links that; and it includes src/ap_modem.c to reach the
+    # per-symbol soft value, so it must not also link mcl_ap.
+    add_executable(mcl_ap_exp011_bootstrap_air
+        experiments/011-bootstrap-over-air/bootstrap_air.c)
+    target_include_directories(mcl_ap_exp011_bootstrap_air PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(mcl_ap_exp011_bootstrap_air PRIVATE mcl_ap_exp_wire_dep)
+    if(NOT WIN32)
+        target_link_libraries(mcl_ap_exp011_bootstrap_air PRIVATE m)
+    endif()
+    set_target_properties(mcl_ap_exp011_bootstrap_air PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
     if(MCL_AP_BUILD_TESTS)
         add_test(NAME mcl_ap_exp001_unit COMMAND mcl_ap_exp001_test)
         add_test(

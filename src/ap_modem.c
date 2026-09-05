@@ -678,63 +678,32 @@ static void estimate_timing(const int16_t *pcm, size_t n,
  * using an outlier.
  */
 
-mcl_ap_modem_status_t mcl_ap_modem_decode(
+/*
+ * Demodulate and verify one frame at a GIVEN timing. Split out of
+ * mcl_ap_modem_decode so the same code can be run at more than one candidate
+ * symbol rate without a second copy of the bit loop -- two copies would make
+ * any difference between the first attempt and the retry indistinguishable
+ * from a result.
+ *
+ * Returns the same statuses mcl_ap_modem_decode does, and fills the parts of
+ * `info` that depend on the timing it was given.
+ */
+static mcl_ap_modem_status_t demod_at(
     const mcl_ap_modem_config_t *config,
-    const int16_t *pcm,
-    size_t sample_count,
+    const int16_t *fsk,
+    size_t fsk_len,
     mcl_ap_modem_scratch_t *scratch,
     uint8_t *out_payload,
     size_t out_capacity,
+    float payload_start,
+    float sps,
+    float bias,
     mcl_ap_modem_rx_t *info)
 {
-    size_t ref_len;
-    size_t index = 0u;
-    float correlation = 0.0f;
-    size_t fsk_start;
-    const int16_t *fsk;
-    size_t fsk_len;
-    int32_t phase = 0;
-    float sps = 0.0f;
-    float bias = 0.0f;
     size_t available_bits, bytes, bit;
     uint8_t declared;
     uint16_t received, computed;
-    float payload_start;
 
-    if (config == NULL || pcm == NULL || scratch == NULL ||
-        out_payload == NULL || info == NULL) {
-        return MCL_AP_MODEM_ERR_INVALID_ARGUMENT;
-    }
-    memset(info, 0, sizeof(*info));
-
-    ref_len = generate_preamble_iq(config, scratch->ref_i, scratch->ref_q);
-    if (ref_len == 0u || ref_len > sample_count) {
-        return MCL_AP_MODEM_ERR_INVALID_ARGUMENT;
-    }
-
-    acquire(config, pcm, sample_count, scratch->ref_i, scratch->ref_q, ref_len,
-            &index, &correlation);
-    info->acquisition_index = index;
-    info->correlation = correlation;
-    info->acquired = (correlation >= config->detection_threshold) ? 1u : 0u;
-    if (info->acquired == 0u) {
-        return MCL_AP_MODEM_ERR_NOT_ACQUIRED;
-    }
-
-    fsk_start = index + ref_len;
-    if (fsk_start >= sample_count) {
-        return MCL_AP_MODEM_ERR_SYNC;
-    }
-    fsk = pcm + fsk_start;
-    fsk_len = sample_count - fsk_start;
-
-    estimate_timing(fsk, fsk_len, (size_t)config->training_bits,
-                    config->fsk_freq_0_hz, config->fsk_freq_1_hz,
-                    &phase, &sps, &bias);
-    info->timing_phase = phase;
-    info->samples_per_symbol = sps;
-
-    payload_start = (float)phase + (float)config->training_bits * sps;
     if (payload_start < 0.0f || window_index(payload_start) >= fsk_len) {
         return MCL_AP_MODEM_ERR_SYNC;
     }
@@ -788,4 +757,197 @@ mcl_ap_modem_status_t mcl_ap_modem_decode(
         return MCL_AP_MODEM_ERR_CRC;
     }
     return MCL_AP_MODEM_OK;
+}
+
+/*
+ * Mean decision margin over `bits` symbols at a candidate rate. Blind: it
+ * scores the SIGNAL and never the payload, so it is something a receiver can
+ * run, unlike a sweep scored against known bytes.
+ *
+ * At the correct rate every symbol is sampled near its centre and the two tone
+ * energies separate cleanly, so the mean margin is maximal; at a wrong rate the
+ * later symbols straddle boundaries, both tones leak, and the mean falls.
+ */
+static float mean_margin(const mcl_ap_modem_config_t *config,
+                         const int16_t *fsk, size_t fsk_len,
+                         float start_t, float sps, float bias, size_t bits)
+{
+    double total = 0.0;
+    size_t counted = 0u, bit;
+
+    for (bit = 0u; bit < bits; ++bit) {
+        float t0 = start_t + (float)bit * sps;
+        size_t start = window_index(t0);
+        size_t len = window_index(sps);
+        float soft;
+
+        if (t0 < 0.0f || start + len > fsk_len) {
+            break;
+        }
+        soft = log_ratio(fsk, start, len,
+                         config->fsk_freq_0_hz, config->fsk_freq_1_hz) - bias;
+        total += (soft < 0.0f) ? -(double)soft : (double)soft;
+        counted++;
+    }
+    if (counted == 0u) {
+        return -1e30f;
+    }
+    return (float)(total / (double)counted);
+}
+
+mcl_ap_modem_status_t mcl_ap_modem_decode(
+    const mcl_ap_modem_config_t *config,
+    const int16_t *pcm,
+    size_t sample_count,
+    mcl_ap_modem_scratch_t *scratch,
+    uint8_t *out_payload,
+    size_t out_capacity,
+    mcl_ap_modem_rx_t *info)
+{
+    size_t ref_len;
+    size_t index = 0u;
+    float correlation = 0.0f;
+    size_t fsk_start;
+    const int16_t *fsk;
+    size_t fsk_len;
+    int32_t phase = 0;
+    float sps = 0.0f;
+    float bias = 0.0f;
+    float payload_start;
+    mcl_ap_modem_status_t status;
+
+    if (config == NULL || pcm == NULL || scratch == NULL ||
+        out_payload == NULL || info == NULL) {
+        return MCL_AP_MODEM_ERR_INVALID_ARGUMENT;
+    }
+    memset(info, 0, sizeof(*info));
+
+    ref_len = generate_preamble_iq(config, scratch->ref_i, scratch->ref_q);
+    if (ref_len == 0u || ref_len > sample_count) {
+        return MCL_AP_MODEM_ERR_INVALID_ARGUMENT;
+    }
+
+    acquire(config, pcm, sample_count, scratch->ref_i, scratch->ref_q, ref_len,
+            &index, &correlation);
+    info->acquisition_index = index;
+    info->correlation = correlation;
+    info->acquired = (correlation >= config->detection_threshold) ? 1u : 0u;
+    if (info->acquired == 0u) {
+        return MCL_AP_MODEM_ERR_NOT_ACQUIRED;
+    }
+
+    fsk_start = index + ref_len;
+    if (fsk_start >= sample_count) {
+        return MCL_AP_MODEM_ERR_SYNC;
+    }
+    fsk = pcm + fsk_start;
+    fsk_len = sample_count - fsk_start;
+
+    estimate_timing(fsk, fsk_len, (size_t)config->training_bits,
+                    config->fsk_freq_0_hz, config->fsk_freq_1_hz,
+                    &phase, &sps, &bias);
+    info->timing_phase = phase;
+    info->samples_per_symbol = sps;
+
+    payload_start = (float)phase + (float)config->training_bits * sps;
+    status = demod_at(config, fsk, fsk_len, scratch, out_payload, out_capacity,
+                      payload_start, sps, bias, info);
+    if (status == MCL_AP_MODEM_OK) {
+        return status;
+    }
+
+    /*
+     * FIRST ATTEMPT FAILED. REFINE THE SYMBOL RATE OVER THE WHOLE FRAME.
+     *
+     * estimate_timing() fits the rate to config->training_bits symbols -- 16 of
+     * them, 2560 samples at the default rate. Experiment 010b showed that is
+     * too short a baseline: the search already covers the true rate in 0.05
+     * steps and still returns a 0.4-0.45 sample error, so the right answer was
+     * INSIDE THE GRID AND NOT CHOSEN. It was a scoring problem, not a
+     * resolution problem.
+     *
+     * The fix is more evidence, not a finer grid: score a candidate rate by the
+     * mean decision margin over the entire frame, ~160 symbols instead of 16.
+     * Experiment 011 measured this over air, board to host, on the three
+     * major-1 bootstrap objects:
+     *
+     *     PRESENCE          10 B    9/15  ->  15/15
+     *     TRANSPORT_ACCEPT  16 B    8/15  ->  15/15
+     *     TRANSPORT_OFFER   17 B    4/15  ->  14/15
+     *
+     * 21 of 45 to 44 of 45. That is why there is no forward error correction
+     * here: the errors were not independent bit noise for a block code to mop
+     * up, they were a timing estimate that drifted a frame out of alignment,
+     * and 010's error structure said so before any code was written.
+     *
+     * WHY IT RUNS ONLY ON THE RETRY PATH
+     *
+     * A frame that already decodes costs nothing extra -- the search is ~120
+     * candidates over the frame and is far more expensive than one demodulation
+     * pass, which matters on the ESP32-S3 this also runs on. And placing it
+     * here makes the change monotone: refinement can turn a failure into a
+     * success and can never turn a success into a failure, because a success
+     * has already returned.
+     *
+     * The search is centred on the NOMINAL rate rather than on the estimate,
+     * because the estimate is the thing being distrusted.
+     */
+    {
+        float nominal = (float)samples_per_bit();
+        float best_sps = sps;
+        float best_score = -1e30f;
+        float candidate;
+        size_t score_bits;
+
+        /*
+         * How many symbols to score over. The declared length is not
+         * trustworthy here -- the first attempt just failed, and it may have
+         * failed by misreading that very byte -- so a fixed budget is used:
+         * the header plus a typical Tier-0 object. Scoring far past the end of
+         * a short frame would average in silence, which has no margin and
+         * flattens the peak the search is looking for.
+         */
+        score_bits = ((size_t)MCL_AP_MODEM_HEADER_BYTES + 16u) * 8u;
+        if (info->payload_bytes > 0u &&
+            info->payload_bytes <= MCL_AP_MODEM_MAX_PAYLOAD_BYTES) {
+            score_bits = ((size_t)MCL_AP_MODEM_HEADER_BYTES
+                          + (size_t)info->payload_bytes) * 8u;
+        }
+
+        for (candidate = nominal - 0.6f;
+             candidate <= nominal + 0.6f;
+             candidate += 0.01f) {
+            float start_c = (float)phase
+                            + (float)config->training_bits * candidate;
+            float score = mean_margin(config, fsk, fsk_len, start_c, candidate,
+                                      bias, score_bits);
+            if (score > best_score) {
+                best_score = score;
+                best_sps = candidate;
+            }
+        }
+
+        if (best_sps != sps) {
+            mcl_ap_modem_status_t retry;
+            float start_best = (float)phase
+                               + (float)config->training_bits * best_sps;
+
+            retry = demod_at(config, fsk, fsk_len, scratch, out_payload,
+                             out_capacity, start_best, best_sps, bias, info);
+            if (retry == MCL_AP_MODEM_OK) {
+                info->samples_per_symbol = best_sps;
+                return retry;
+            }
+            /*
+             * The retry did not recover it either. `info` now describes the
+             * refined attempt, which is the more informative of the two: it is
+             * what a caller looking at received_crc and payload_bytes should
+             * see, because it is the best reading the receiver could produce.
+             */
+            info->samples_per_symbol = best_sps;
+            return retry;
+        }
+    }
+
+    return status;
 }

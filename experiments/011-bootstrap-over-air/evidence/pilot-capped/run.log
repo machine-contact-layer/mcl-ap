@@ -1,0 +1,36 @@
+=== MCL-AP Experiment 011: bootstrap objects over air ===
+date:       2026-09-06T04:34:51+05:30
+rig:        board
+microphone: Microphone Array (Realtek(R) Audio)
+port:       COM3
+emit gain:  50% of full scale (rig control; the waveform is unchanged)
+input cap:  capture gain <= 0.15, to keep the amplifier transient unclipped
+clock:      board and host oscillators are independent -- this rig
+            carries the clock term host-loopback cannot show
+waveform:   FSK 3000/6000 Hz (modem default), 300 baud, 48 kHz
+
+board:      MCLNODE PONG v4
+gain:       MCLNODE GAIN 50%
+
+--- cell offer (17 bytes) expected=18020A11EDC000C0FFEE03015E1EC7ED3C ---
+source: wrote C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\011-bootstrap-over-air\evidence\pilot-capped\source-offer.wav: 47360 samples (0.987 s) band 3000/6000 chirp 2000-6000
+source: payload TRANSPORT_OFFER bytes=17 hex=18020A11EDC000C0FFEE03015E1EC7ED3C
+  level probe 1: capture gain 0.205 -> peak   -3.1 dB
+  level probe 2: capture gain 0.113 -> peak   -4.7 dB
+  capture gain settled at 0.113 (was 0.205)
+  offer 01 rc=3 peak=-4.8 dB   .\offer-trial-01.wav acquired=1 corr=0.764 sps 159.600->159.910  stock=BAD obj=--   refined=BAD obj=-- 
+  offer 02 rc=3 peak=-5.6 dB   .\offer-trial-02.wav acquired=1 corr=0.771 sps 159.600->159.860  stock=BAD obj=--   refined=BAD obj=-- 
+  offer 03 rc=3 peak=-5.7 dB   .\offer-trial-03.wav acquired=1 corr=0.777 sps 159.500->159.870  stock=BAD obj=--   refined=BAD obj=-- 
+  offer 04 rc=3 peak=-5.6 dB   .\offer-trial-04.wav acquired=1 corr=0.771 sps 159.500->159.910  stock=BAD obj=--   refined=BAD obj=-- 
+
+  offer : acquired 4/4   shipped receiver 0/4   blind refinement 0/4
+
+SUMMARY
+  cell      bytes    acquired     shipped     refined
+  offer        17         4/4         0/4         0/4
+
+Acquired, shipped and refined are counted separately on purpose. A cell
+that acquires and does not recover is a channel result; a cell that does
+not acquire at all is usually the harness, and the peak level says which.
+Shipped and refined come from the SAME capture, so their difference is the
+estimator and nothing else.

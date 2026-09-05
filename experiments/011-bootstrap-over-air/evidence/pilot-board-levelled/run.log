@@ -1,0 +1,31 @@
+=== MCL-AP Experiment 011: bootstrap objects over air ===
+date:       2026-09-06T02:29:50+05:30
+rig:        board
+microphone: Microphone Array (Realtek(R) Audio)
+port:       COM3
+clock:      board and host oscillators are independent -- this rig
+            carries the clock term host-loopback cannot show
+waveform:   FSK 3000/6000 Hz (modem default), 300 baud, 48 kHz
+
+board:      MCLNODE PONG v4
+
+--- cell offer (17 bytes) expected=18020A11EDC000C0FFEE03015E1EC7ED3C ---
+source: wrote C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\011-bootstrap-over-air\evidence\pilot-board-levelled\source-offer.wav: 47360 samples (0.987 s) band 3000/6000 chirp 2000-6000
+source: payload TRANSPORT_OFFER bytes=17 hex=18020A11EDC000C0FFEE03015E1EC7ED3C
+  level probe 1: capture gain 0.100 -> peak   -2.7 dB
+  capture gain settled at 0.100 (was 0.100)
+  offer 01 rc=0 peak=-5.1 dB   .\offer-trial-01.wav acquired=1 corr=0.673 sps 159.800->159.870  stock=ok  obj=ok   refined=ok  obj=ok 
+  offer 02 rc=0 peak=-2.2 dB   .\offer-trial-02.wav acquired=1 corr=0.766 sps 159.950->160.020  stock=ok  obj=ok   refined=ok  obj=ok 
+  offer 03 rc=3 peak=-1.9 dB   .\offer-trial-03.wav acquired=1 corr=0.780 sps 160.150->159.980  stock=BAD obj=--   refined=BAD obj=-- 
+
+  offer : acquired 3/3   shipped receiver 2/3   blind refinement 2/3
+
+SUMMARY
+  cell      bytes    acquired     shipped     refined
+  offer        17         3/3         2/3         2/3
+
+Acquired, shipped and refined are counted separately on purpose. A cell
+that acquires and does not recover is a channel result; a cell that does
+not acquire at all is usually the harness, and the peak level says which.
+Shipped and refined come from the SAME capture, so their difference is the
+estimator and nothing else.

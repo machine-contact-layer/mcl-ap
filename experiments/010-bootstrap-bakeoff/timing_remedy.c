@@ -75,7 +75,7 @@ static int parse_payload(const char *hex)
 }
 
 /* Mean |margin| over `bits` symbols starting at `start_t`, at rate `sps`. */
-static float mean_margin(const int16_t *fsk, size_t fsk_len,
+static float exp010c_mean_margin(const int16_t *fsk, size_t fsk_len,
                          const mcl_ap_modem_config_t *cfg,
                          float start_t, float sps, float bias, size_t bits)
 {
@@ -169,7 +169,7 @@ static void analyse(const char *path)
     for (cand = TRUE_SPS - 0.6f; cand <= TRUE_SPS + 0.6f; cand += 0.01f) {
         float score;
         start_c = (float)phase + (float)cfg.training_bits * cand;
-        score = mean_margin(fsk, fsk_len, &cfg, start_c, cand, bias, frame_bits);
+        score = exp010c_mean_margin(fsk, fsk_len, &cfg, start_c, cand, bias, frame_bits);
         if (score > best_score) {
             best_score = score;
             best_sps = cand;
