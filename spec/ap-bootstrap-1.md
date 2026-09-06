@@ -343,9 +343,15 @@ Promotion to Stable requires:
    parameters are currently reasoned rather than measured.
 5. **Outstanding.** A profile identifier assigned under §10.
 
-Two of the five are closed. The two that remain outstanding both need something
-this tree cannot contain — a second class of transmitter, and a third machine —
-and neither is closed by more text.
+**One of the five is closed, one is half closed, and three are outstanding.**
+An earlier revision of this section said "two of five are closed" and then
+"the two that remain outstanding", which does not add up to five and was
+generous to this profile in both halves of the same sentence.
+
+The three that remain need something no amount of text supplies: a second class
+of transmitter, a third machine, and an interoperability record that justifies
+an assigned number. Item 2's remaining half needs a reader who has never seen
+the reference implementation.
 
 Until then a deployment may implement `AP-BOOTSTRAP-1` and MUST NOT describe it
 as frozen.
