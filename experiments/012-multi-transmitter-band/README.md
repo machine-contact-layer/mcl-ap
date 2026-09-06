@@ -149,7 +149,15 @@ tones are. It has not been demonstrated over air.
   to know whether either candidate is real;
 * the 10 B / 16 B / 17 B cells on whichever pair survives;
 * the Android transmitter class, which is the second INDEPENDENT class the
-  Stable criterion asks for.
+  Stable criterion asks for -- and BEFORE that, the two-level falsification
+  run described in experiment 009's "The Android emission path" section. The
+  phone plays through Android's media path, which may carry OEM effects,
+  loudness enhancement, compression and speaker protection, none of which a
+  shell can observe or disable. SNR against the room floor cancels a constant
+  CAPTURE gain and cancels nothing on the transmit side, so a compressor in
+  that path would appear in the curve as though it were the speaker. If the
+  curve's shape changes with volume index, the phone is not a transmitter
+  class, it is a transmitter plus software, and it must not be counted as one.
 
 Two transmitter classes is one more than one, and still not enough.
 

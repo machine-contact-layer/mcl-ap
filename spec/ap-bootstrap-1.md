@@ -398,6 +398,29 @@ there.
 No wire field was added for any of this. `TRANSPORT_ACCEPT` already echoes
 `migration_ref`, and that echo is the selection.
 
+**The hidden terminal is not solved by any of this, and is not claimed to be.**
+Every rule above assumes a contender can hear the acceptance that selects
+somebody else. Two responders out of earshot of each other, both in range of
+the solicitor, cannot: each senses an idle medium, both transmit, and their
+offers collide at the solicitor while neither transmitter observes anything
+wrong. Acoustically this is ordinary — a wall, a corner, a directional speaker
+— and carrier sensing cannot detect it by construction.
+
+What the rules give is that the failure is **survivable rather than
+structural**: the colliding offers are lost, the solicitation times out, both
+contenders re-draw a slot, and a later round succeeds. Rule 4's stand-down is
+an optimisation and is written as **SHOULD** for exactly this reason: a
+contender that never hears the acceptance still converges, through its offer
+retries, more slowly.
+
+There is no RTS/CTS here and none is proposed. A handshake to reserve the
+medium costs two more frames of 600-790 ms each on a bearer whose entire
+purpose is to carry one object to a stranger, and it would still not help the
+case where the two contenders cannot hear each other's reservations either.
+Deployments where hidden terminals are the normal case, rather than the
+occasional one, need a bearer with a coordinator; that is a deployment-profile
+decision and not something this profile can fix.
+
 ### 8.2 `migration_ref` MUST be random on this medium
 
 Because `migration_ref` now selects one contender out of several, a value

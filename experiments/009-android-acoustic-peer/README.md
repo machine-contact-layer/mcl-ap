@@ -93,6 +93,60 @@ it was asked for, and restores whatever it found.
   one room, one session. Experiment 002 is what a path characterisation looks
   like, and this is not one.
 - **Nothing about the phone's microphone**, which was never opened.
+- **Nothing about what the phone's OUTPUT path did to the waveform.** See the
+  next section. This one matters more than it looks, because Experiment 012
+  wants to use this phone as a third transmitter class.
+
+## The Android emission path, and what a phone curve actually measures
+
+Experiment 012 needs a third independent transmitter class and this handset is
+the candidate. Before a curve from it counts as a transmitter measurement, what
+sits between the file and the air has to be written down, because most of it
+cannot be observed or disabled from a shell.
+
+**How the sound is actually produced here.** A WAV on the device, opened by an
+explicit component (`com.google.android.apps.nbu.files/.gateway.preview.PreviewActivity`)
+— so it goes out on the **media** path, `STREAM_MUSIC` / `USAGE_MEDIA`, with
+whatever that path applies on this OEM's build. It is not an application this
+project wrote, and it does not open an `AudioTrack` with stated attributes.
+
+**What that path may be doing, unobserved:**
+
+| stage | why the rig cannot see or control it |
+|---|---|
+| stream volume curve | volume is set by `input keyevent KEYCODE_VOLUME_UP` because `cmd media_session volume --set` reports success and does nothing. The rig can move the index; it cannot read the resulting gain, and the curve is not linear in the index. |
+| OEM audio effects on `STREAM_MUSIC` | vivo builds ship effect chains on the media path. Nothing in a shell disables them for another app's playback. |
+| loudness enhancement / dynamic range compression | frequency- **and level**-dependent by design |
+| speaker protection and excursion limiting | deliberately clamps low frequencies at high output, which is exactly the region a band sweep is asking about |
+
+**Why this is not covered by the SNR normalisation.** Experiment 012 scores on
+SNR against each path's own room floor, and that cancels a constant **capture**
+gain exactly — tone and room are multiplied alike. It does **not** cancel
+anything on the transmit side that varies with frequency, because that changes
+the tone and not the room. A compressor or a protection filter in the phone's
+output path therefore appears in the curve as if it were the speaker's
+response, and the minimax would select a band against it as though it were
+physics.
+
+**The falsification test, which has not been run.** Emit the same ladder at two
+different volume indices and compare the curve *shapes* after normalising each
+to its own level. A speaker's response shape does not change with drive level
+over a modest range; a compressor's does. If the shapes differ, the phone curve
+is a measurement of the phone's software and not of its transmitter, and it
+must not be used as an independent transmitter class.
+
+That test costs **two emissions** and no acoustic budget is authorised, so it
+has not been done and no phone curve exists in Experiment 012.
+
+**The receiver side of the same question cannot be asked at all on this rig.**
+Whether the phone's `AudioRecord` path uses `UNPROCESSED` or
+`VOICE_COMMUNICATION`, and whether AGC, noise suppression and echo cancellation
+are engaged, decides whether a phone can be an MCL-AP *receiver* — and every
+one of those is an application-level choice that needs an APK holding
+`RECORD_AUDIO`. `/dev/snd` is `system:audio` mode 660 and the shell is not in
+the `audio` group. Until an APK exists, this project has **no evidence
+whatsoever** about Android as an acoustic receiver, and the release claims
+none.
 
 ## Why the frame does worse than the object
 
