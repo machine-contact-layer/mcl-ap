@@ -196,7 +196,15 @@ int main(int argc, char **argv)
     if (snprintf(g_path, sizeof(g_path), "%s/VECTORS.md", dir) < 0) {
         return 2;
     }
-    manifest = fopen(g_path, "w");
+    /*
+     * Binary mode, deliberately. On Windows a text-mode stream turns every
+     * newline into CRLF, while .gitattributes stores the file as LF -- so the
+     * generated manifest differs from the stored one on one platform and not
+     * the other, and any digest taken over the working tree disagrees with a
+     * fresh clone. That is the same defect the release bundle was repaired for
+     * and that Experiment 011's evidence hit the same day.
+     */
+    manifest = fopen(g_path, "wb");
     if (manifest == NULL) {
         fprintf(stderr, "cannot write %s\n", g_path);
         return 2;
