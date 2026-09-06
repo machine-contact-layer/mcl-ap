@@ -33,6 +33,15 @@
  * Usage: make_vectors <output directory>
  */
 
+/* MSVC deprecates fopen in favour of fopen_s, which is not C99 and is not
+   available everywhere this has to build. wav_io.h defines the same macro for
+   the same reason, but it is included after src/ap_modem.c, and by then the
+   CRT headers that arm the deprecation have already been pulled in. It has to
+   be first in the translation unit, not merely present in it. */
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include "../src/ap_modem.c"
 #include "../tools/wav_io.h"
 
