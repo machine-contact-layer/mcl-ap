@@ -55,22 +55,52 @@ floor is measured in each capture's own pre-roll.
 
 Both paths recorded 2026-09-06, capture gain 0.12, one burst each.
 
+The selection scores the **preamble chirp as well as the two FSK tones**.
+AP-BOOTSTRAP-1 derives the acquisition chirp from the pair -- it sweeps from
+`f0 - 1000` up to `f1` -- so scoring only the tones scores the data and ignores
+the thing that has to find the data.
+
 | pair | worst-path weaker-tone SNR |
 |---|---|
-| **1500 / 6300 Hz** (minimax winner) | **67.13 dB** |
-| 3000 / 6000 Hz (incumbent) | 55.75 dB |
+| **6000 / 7200 Hz** (minimax winner) | **55.75 dB** |
+| 3000 / 6000 Hz (incumbent), scored the same way | 32.64 dB |
 
-**+11.38 dB** for the worst path. Per path, for the winning pair:
+The incumbent scores badly on its own preamble: its chirp sweeps 2000-6000 Hz,
+straight through the laptop speaker's measured 3 kHz notch.
 
-| path | f0 SNR | f1 SNR |
-|---|---|---|
-| board (DFR1154) | 70.84 dB | 67.13 dB |
-| host-speaker (laptop) | 80.05 dB | 70.74 dB |
+**No band change is proposed on this evidence, and the number above has not
+been confirmed over air.** See the retraction below.
 
-**This is not yet a reason to change the profile.** Two transmitter classes is
-one more than one, and still not the two *independent* classes the Stable
-criterion asks for — the Android peer is the outstanding one. The pair also has
-to survive the 10/16/17-byte cells over air before it means anything.
+## Retracted: the first two over-air trials measured nothing
+
+Two cells were run at candidate bands, 1500/6300 and then 6000/7200. Both came
+back `acquired=0` with correlation ~0.10 at healthy peaks (-10.5 dB, -8.9 dB).
+
+The first was written up here as evidence that a chirp starting at 500 Hz is
+below what the transmitter can drive. **That was wrong.** Experiment 011's rig
+applied `-Band` to the host tool only -- `gen`, `hex` and `decode` -- and never
+sent `BAND` to the board. The board emitted at the modem default while the host
+decoded a different band. Correlation ~0.10 is what a transmit/receive band
+mismatch looks like, and it says nothing whatever about either candidate.
+
+The rig now sends `BAND` and treats a refusal as fatal, because a rig that
+cannot set the band it claims to be testing produces numbers about a different
+band.
+
+The chirp rule is kept in the selection, but on ARGUMENT rather than on that
+run: the receiver correlates against the derived chirp, so a chirp sweeping
+where the transmitter cannot drive costs acquisition however clean the two
+tones are. It has not been demonstrated over air.
+
+**Outstanding, and none of it is startable without a fresh emission budget:**
+
+* re-run 1500/6300 and 6000/7200 with the repaired rig, which is the only way
+  to know whether either candidate is real;
+* the 10 B / 16 B / 17 B cells on whichever pair survives;
+* the Android transmitter class, which is the second INDEPENDENT class the
+  Stable criterion asks for.
+
+Two transmitter classes is one more than one, and still not enough.
 
 ## What the instrument refuses to do
 

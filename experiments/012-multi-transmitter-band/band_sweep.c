@@ -631,6 +631,66 @@ static double abs_at(const path_t *p, double hz)
     return -300.0;
 }
 
+/*
+ * The score of one pair, over all paths. ONE function, because the incumbent
+ * comparison must be computed exactly as the search computes its candidates.
+ *
+ * It was not: the search scored the chirp band and the incumbent line scored
+ * only the two tones, so the "+11.38 dB improvement" printed underneath was a
+ * difference between two different measures rather than between two bands.
+ */
+static double pair_score(const path_t *path, size_t n_paths,
+                         double f0, double f1, int *admissible)
+{
+    double score = 1e9;
+    size_t k, m;
+
+    *admissible = 1;
+    for (k = 0; k < n_paths; ++k) {
+        int have0 = 0, have1 = 0;
+        double a = level_at(&path[k], f0, &have0);
+        double b = level_at(&path[k], f1, &have1);
+        double weaker = (a < b) ? a : b;
+        if (!have0 || !have1) { *admissible = 0; return -1e9; }
+        /*
+         * THE PREAMBLE IS PART OF THE BAND, AND IT COST A BURST TO LEARN IT.
+         *
+         * AP-BOOTSTRAP-1 derives the acquisition chirp from the pair: it
+         * sweeps from f0 - 1000 Hz up to f1. Scoring only the two FSK tones
+         * scores the DATA and ignores the thing that has to find the data.
+         *
+         * THE SUPPORTING RUN WAS INVALID AND THE RULE IS KEPT ON ARGUMENT.
+         *
+         * 1500/6300 was first tried over air, came back acquired=0 with
+         * correlation 0.106 at a healthy -10.5 dB peak, and that was written
+         * down here as evidence that its 500 Hz chirp start was unreachable.
+         * It was not evidence of anything: the rig set the band on the HOST
+         * tool only and never sent BAND to the board, so the board emitted at
+         * the modem default and the host decoded a different band. 6000/7200
+         * failed identically for the same reason. Correlation ~0.10 was a
+         * transmit/receive mismatch, not a preamble.
+         *
+         * The rule stays because the ARGUMENT stands on its own: the receiver
+         * correlates against the derived chirp, so a chirp sweeping where the
+         * transmitter cannot drive costs acquisition whatever the two tones
+         * do. It has NOT been demonstrated over air, and the README says so.
+         *
+         * So every measured tone the chirp sweeps through is scored too. A
+         * pair whose preamble crosses a null is not a usable pair, however
+         * clean its two tones are.
+         */
+        for (m = 0; m < path[k].count; ++m) {
+            double hz = path[k].tone[m].hz;
+            if (hz < f0 - 1000.0 || hz > f1) continue;
+            if (path[k].tone[m].snr_db < weaker) {
+                weaker = path[k].tone[m].snr_db;
+            }
+        }
+        if (weaker < score) score = weaker;
+    }
+    return score;
+}
+
 static int cmd_minimax(int argc, char **argv)
 {
     path_t path[MAX_PATHS];
@@ -705,25 +765,27 @@ static int cmd_minimax(int argc, char **argv)
              *               no longer flat and the measurement stops being
              *               about the transmitter.
              */
-            if (f0 < 1500.0) continue;
+            /*
+             * The chirp starts 1000 Hz below f0 and the modem floors it at
+             * 500 Hz. A pair whose chirp would be FLOORED rather than shifted
+             * is refused outright: the emitted preamble then differs from the
+             * one the derivation describes, and the receiver correlates
+             * against the derivation.
+             *
+             * The floor is the lowest MEASURED tone, not 500 Hz. Scoring a
+             * chirp through a region nothing was measured in is guessing, and
+             * that guess is exactly what failed over air.
+             */
+            if (f0 - 1000.0 < ref->tone[0].hz) continue;
             if (f1 - f0 < 900.0) continue;
             if (f1 > 9000.0) continue;
 
-            for (k = 0; k < n_paths; ++k) {
-                int have0 = 0, have1 = 0;
-                double a = level_at(&path[k], f0, &have0);
-                double b = level_at(&path[k], f1, &have1);
-                double weaker = (a < b) ? a : b;
-                if (!have0 || !have1) { score = -1e9; break; }
-                if (weaker < score) score = weaker;
+            {
+                int ok = 1;
+                score = pair_score(path, n_paths, f0, f1, &ok);
+                if (!ok) continue;
             }
-            /*
-             * Tie-break on separation, so the answer is deterministic rather
-             * than an artefact of iteration order. When two pairs are equally
-             * strong on the worst path, the wider one is preferred: the two
-             * detectors are further out of each other's skirts, which is the
-             * only thing left to choose between them.
-             */
+
             if (score > best_score ||
                 (score == best_score && (f1 - f0) > (best_f1 - best_f0))) {
                 best_score = score;
@@ -755,17 +817,10 @@ static int cmd_minimax(int argc, char **argv)
     /* The incumbent, scored the same way, so the comparison is like for like
        rather than a new number against a remembered one. */
     {
-        double inc = 1e9;
         int ok = 1;
-        for (k = 0; k < n_paths; ++k) {
-            int h0 = 0, h1 = 0;
-            double a = level_at(&path[k], 3000.0, &h0);
-            double b = level_at(&path[k], 6000.0, &h1);
-            double weaker = (a < b) ? a : b;
-            if (!h0 || !h1) { ok = 0; break; }
-            if (weaker < inc) inc = weaker;
-        }
-        printf("\nincumbent AP-BOOTSTRAP-1 pair 3000/6000 Hz, same score: ");
+        double inc = pair_score(path, n_paths, 3000.0, 6000.0, &ok);
+        printf("\nincumbent AP-BOOTSTRAP-1 pair 3000/6000 Hz, scored the "
+               "same way\n(preamble chirp included): ");
         if (!ok) {
             printf("not in the measured set\n");
         } else {

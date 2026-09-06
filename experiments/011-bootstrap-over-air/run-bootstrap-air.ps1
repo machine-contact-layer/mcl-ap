@@ -70,6 +70,17 @@ param(
     # room measured at -38.8 dB mean, and correlation fell from 0.86 to 0.72.
     # Capping the input gain bounds that, at the cost of a lower recorded peak.
     [double]$MaxCaptureGain = 0.15,
+    # Set the receiver input gain DIRECTLY and skip convergence.
+    #
+    # Convergence is the right design when the budget is twenty trials: it
+    # spends a few probe emissions to land the recorded peak in a good window.
+    # It is the wrong design when the budget is four, because each probe IS an
+    # emission and the room is occupied -- the rig would spend the whole budget
+    # deciding how loud to record and never run the cell.
+    #
+    # Supplying this pins the gain to a value measured earlier and emits
+    # nothing to find it. 0 means converge as before.
+    [double]$FixedCaptureGain = 0.0,
     [string]$Port = 'COM3',
     # The FSK pair, in Hz. Empty means the modem default (3000/6000). The
     # default pair was measured on the board's speaker; experiment 002 measured
@@ -308,6 +319,33 @@ if ($Rig -eq 'board') {
         throw "the board refused GAIN $Gain. A run whose emitted level is unknown is not a measurement."
     }
     Log "gain:       $((($gainReply -split "`r?`n" | Where-Object { $_ -match 'MCLNODE GAIN' } | Select-Object -First 1)).Trim())"
+
+    # THE BOARD HAS TO BE TOLD THE BAND. IT WAS NOT.
+    #
+    # -Band reconfigured the HOST tool -- gen, hex and decode -- and nothing
+    # else, so the board went on emitting at the modem default while the host
+    # decoded against the override. Two runs at two different bands both came
+    # back acquired=0 with correlation ~0.10 and healthy peaks, which is
+    # exactly what a transmit/receive band mismatch looks like, and both were
+    # briefly mistaken for a property of the bands.
+    #
+    # It is a hard failure, not a warning. A rig that cannot set the band it
+    # claims to be testing produces numbers about a different band.
+    if ($Band -ne '') {
+        $sp.DiscardInBuffer()
+        $bandParts = $Band -split ':'
+        if ($bandParts.Count -ne 2) {
+            $sp.Close(); $sp.Dispose()
+            throw "-Band must be <f0>:<f1> in Hz, got '$Band'"
+        }
+        Send-Line "BAND $($bandParts[0]) $($bandParts[1])"
+        $bandReply = Read-UntilMatch 'MCLNODE BAND|MCLNODE ERROR' 3000
+        if ($bandReply -notmatch 'MCLNODE BAND') {
+            $sp.Close(); $sp.Dispose()
+            throw "the board refused BAND $Band. A run whose emitted band is unknown is not a measurement."
+        }
+        Log "band:       $((($bandReply -split "`r?`n" | Where-Object { $_ -match 'MCLNODE BAND' } | Select-Object -First 1)).Trim())"
+    }
     Log ''
 }
 
@@ -345,7 +383,13 @@ foreach ($c in $cells) {
     }
 
     if ($null -ne $startCapture) {
-        $settledAt = Set-InputLevelFor $emit
+        if ($FixedCaptureGain -gt 0.0) {
+            Set-Level ([Ep]::Capture) $FixedCaptureGain
+            $settledAt = [Ep]::Level([Ep]::Capture)
+            Log ("  input gain FIXED at {0:n3}; no probe emissions" -f $settledAt)
+        } else {
+            $settledAt = Set-InputLevelFor $emit
+        }
         Log ("  capture gain settled at {0:n3} (was {1:n3})" -f $settledAt, $startCapture)
     } else {
         Log '  capture gain NOT SET by this script'
