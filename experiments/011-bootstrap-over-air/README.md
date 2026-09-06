@@ -124,6 +124,21 @@ bytes where the board rig recovers 9 of 15. It is recorded here as the reason
 the shared-clock control does not exist, rather than omitted so that the missing
 row has to be inferred.
 
+> **Correction, 2026-09-07 — the measurement stands, the explanation does not.**
+> The loopback result (1 of 3 at 10 bytes) is unchanged and is still the reason
+> the shared-clock control does not exist. The attribution to "a measured notch
+> around 3 kHz" is **withdrawn**. Experiment 012 measures 3000 Hz on this same
+> host path at **65.92 dB SNR**, one of its stronger bins; the notch is at
+> **3600 Hz** and is about one bin wide, touching neither tone. The 3 kHz figure
+> was carried forward from Experiment 002 and was reinforced by a scoring defect
+> that let a single bin decide a pair — see
+> `experiments/012-multi-transmitter-band/README.md`. Two further facts now
+> apply to this cell: the host speaker is **physically damaged**, with rising
+> mechanical noise, so it is no longer a qualifying transmitter for band
+> selection; and this row therefore stays published as **negative and context
+> evidence**, which is what it was always good for. Nothing above this line has
+> been altered.
+
 ## 6. Reproducing
 
 ```

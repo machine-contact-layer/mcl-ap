@@ -495,17 +495,53 @@ speaker. The `mcl-ap` band registry already records that this pair must not be
 standardised on the strength of one campaign, and Experiment 011 is a second
 campaign on the same transmitter rather than a second transmitter.
 
-There is direct evidence that the choice does not travel: **this laptop's
-speaker has a measured notch around 3 kHz**, one of the two tones, and a
-loopback path through it recovered 1 of 3 at 10 bytes where the board rig
-recovers 9 of 15. A bootstrap profile whose lower tone lands in a common laptop
-speaker's notch is not yet a bootstrap profile.
+There is direct evidence that the choice does not travel. A loopback through
+this host's speaker recovered 1 of 3 at 10 bytes where the board rig recovers
+9 of 15, and scored the same way as the candidates, the incumbent pair is
+**10.97 dB** behind the best pair on that path (experiment 012).
+
+**One earlier explanation of that result is withdrawn.** This document
+previously said the host speaker "has a measured notch around 3 kHz", one of
+the two tones. It does not: in experiment 012's dataset 3000 Hz reads
+**65.92 dB SNR**, one of that path's stronger bins. The notch is at **3600 Hz**,
+about one bin wide, between neighbours at 3300 Hz (58.71 dB) and 3900 Hz
+(42.68 dB) — it touches neither tone. The claim came from a scoring defect that
+let a single bin decide a pair; the retraction and the recomputation are in
+`experiments/012-multi-transmitter-band/README.md`. The conclusion that the
+pair does not travel survives, on the corrected numbers, but it is no longer
+attributed to a notch under a tone.
+
+**That host path is also no longer qualifying evidence.** Its speaker is
+physically damaged, with rising mechanical noise. Its measurements stay
+published and unedited as negative and context evidence — they are what first
+showed the choice does not travel — but a damaged transducer must not
+contribute to selecting the waveform.
 
 Promotion to Stable requires:
 
-1. **Outstanding.** The band swept on **at least two transmitter classes that
-   are not the DFR1154**, with the pair selected from that evidence rather than
-   inherited. This is the load-bearing gap.
+1. **Outstanding.** The band swept on **at least two materially different,
+   healthy transmitter classes, including at least one class not used to select
+   the original waveform**, each measured through its **actual end-to-end audio
+   path** — the amplifier, any OEM signal processing and the transducer that a
+   deployment would really use, not an idealised source. The pair must be
+   selected from that evidence rather than inherited, by **worst case across the
+   matrix** rather than by average. This is the load-bearing gap.
+
+   This criterion replaces an earlier one requiring "two transmitter classes
+   that are not the DFR1154". That test counted classes; this one asks whether
+   the choice travels. It was changed because one of the three available paths
+   is a physically damaged speaker, and a broken transducer does not become
+   evidence by making the count three. **It is not a relaxation:** a healthy
+   class not used to choose the waveform is still mandatory, and each class must
+   now be exercised through its real audio path in both directions where the
+   class can also receive.
+
+   The two intended classes are the DFR1154 speaker/amplifier path and an
+   Android handset media path. Where a handset's response changes with drive
+   level, that is an **operating condition of a real transmitter chain**, not a
+   disqualification — PCM through the platform media stack, OEM processing,
+   amplifier and speaker is the transmitter a builder actually meets. Record the
+   operating points and require the selected pair to survive all of them.
 2. **Partly done.** A receiver written from this document alone now exists —
    `conformance/independent/ap_bootstrap_rx.py`, sharing no code with `mcl-ap`,
    in a language that cannot accidentally link it — and it agrees with the
@@ -515,8 +551,17 @@ Promotion to Stable requires:
    That demonstrates this document is **self-sufficient**: no parameter a
    receiver needs lives only in the reference implementation. It does **not**
    demonstrate the document is unambiguous to someone who has never seen that
-   implementation, because the same author wrote both. The remaining half needs
-   a different reader.
+   implementation, because the same author wrote both.
+
+   **The remaining half is not a private task.** This project's evidence rule
+   makes internal clean-room independence a matter of **code and provenance**
+   independence, which is what the Python receiver establishes. A genuinely
+   unrelated reader is **public review**, which the charter requires for Stable
+   in any case and which cannot happen while the repositories are unpublished.
+   This item is therefore closed as far as private work can close it, and the
+   rest is sequenced after publication — it is not a reason to withhold the
+   Candidate profile, and no one is waiting privately for a stranger to
+   implement it.
 3. **Done.** `conformance/vectors/`, three positive and six negative, each
    negative refusing for a different reason. Their limit is stated in the
    manifest and repeated here because it matters: they are noise-free, so a

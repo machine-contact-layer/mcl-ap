@@ -34,6 +34,14 @@ profile says so, and this file repeats it, because a cross-test that looks like
 independent verification is exactly the kind of result that gets quoted as more
 than it is.
 
+That remaining half is **not a private task, and nothing here is waiting on
+one**. Internal clean-room independence is independence of *code and
+provenance*, which is what this cross-test establishes. A genuinely unrelated
+reader is **public review**, which the charter requires for Stable anyway and
+which cannot happen before the repositories are published (release gate row 36).
+So this file records a bound on what the cross-test proves — not an outstanding
+private action item.
+
 It also does not establish that a receiver works over air. **These vectors are
 noise-free** — they are the transmitter's own output — so a receiver that
 omitted the mandatory whole-frame rate refinement of §6.4 would pass every one
