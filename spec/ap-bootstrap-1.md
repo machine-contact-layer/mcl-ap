@@ -229,23 +229,66 @@ carrying a problem that §6.4 removes.
 `PRESENCE` simultaneously defeat a perfect modem: the replies overlap, all are
 lost, and no amount of error correction helps.
 
+### 7.1 Airtime, which sets every other number here
+
+At 300 baud the objects in §4 occupy the medium for:
+
+| Object | Bytes | Airtime |
+|---|---:|---:|
+| `PRESENCE` | 10 | 600.0 ms |
+| `TRANSPORT_ACCEPT` | 16 | 760.0 ms |
+| `TRANSPORT_OFFER` | 17 | **786.7 ms** |
+
+(Preamble plus training plus `(3 + payload) × 8` symbols at 160 samples each.)
+
+**A contention window shorter than that cannot separate two transmissions.** An
+earlier revision of this section specified a 400 ms reply window, and two
+responders placed anywhere inside it overlap with *certainty* — not with some
+probability a better random source would reduce. Randomising harder does not
+repair an interval that is too short by construction.
+
+### 7.2 The rule
+
 | Parameter | Value | Meaning |
 |---|---|---|
 | Announce interval | 1500 ms | between successive `PRESENCE` emissions |
 | Maximum announcements | 10 | before giving up and reporting nothing heard |
-| Reply slot | 400 ms | window a reply is randomised within |
+| Backoff slots | 16 | candidate slots in a contention round |
+| Backoff slot width | 250 ms | one slot |
 | Response timeout | 3000 ms | before an unanswered offer is retried |
 | Offer retries | 2 | per bearer, before moving to the next |
 
-A receiver that hears a `PRESENCE` and intends to reply **MUST NOT reply
-immediately.** It MUST delay by a value drawn uniformly from the reply slot.
+A machine that intends to transmit into the shared medium **MUST**:
 
-The delay SHOULD be drawn from a random source. Where none is available it MAY
-be derived from the replying machine's `source_ref`. **A deployment relying on
-the derived form must understand what it gets:** it separates two peers
-reliably and three only by coincidence, because the delay is then a pure
-function of `source_ref` and two machines whose references are congruent modulo
-the slot width collide every single time.
+1. Draw a slot index uniformly at random from the slot count, and wait that
+   many slot widths.
+2. At slot expiry, **sense the medium**. If an MCL preamble or transmission is
+   detected, **defer**: draw a fresh slot and repeat.
+3. Otherwise transmit.
+
+**Deferral is what makes this work, not the delay.** The slot width need only
+exceed the acquisition time of a transmission already under way — the preamble
+is 200 ms — so a machine drawing a later slot can *see* an earlier one and
+yield. That is why 250 ms suffices where 400 ms did not: 400 ms was being asked
+to exceed a whole frame, and 250 ms is only being asked to exceed a preamble.
+
+This applies to `PRESENCE` as well as to replies. Machines powered on together
+announce together, and a fixed interval keeps them phase-locked so they collide
+on every subsequent round; the announce interval is therefore **followed by a
+fresh backoff**, not used bare. Bluetooth LE perturbs advertising timing for
+this reason, and EPC Gen2 has responders choose among slots rather than delay
+within a window; the shared conclusion is that randomness must affect the
+transmission *opportunity*, not merely add an offset smaller than the packet.
+
+**Randomness is REQUIRED, not preferred.** An implementation without a random
+source MUST NOT claim `MCL Stranger-Contact 1` on a shared medium. Deriving the
+slot from `source_ref` was previously permitted and is now forbidden: wire.h
+assigns `source_ref` no uniqueness property, so two builders may legally choose
+the same value and then collide on every round forever. A deterministic
+function of a non-unique value provides no multi-builder guarantee.
+
+**Medium sensing is REQUIRED** for the same claim. Step 2 is not optional, and
+an implementation that cannot sense cannot perform it.
 
 **Retry the same bearer before concluding anything about the peer.** On this
 bearer a lost offer and an unsupported bearer are indistinguishable, and §9
@@ -339,8 +382,10 @@ Promotion to Stable requires:
    manifest and repeated here because it matters: they are noise-free, so a
    receiver that omitted §6.4 entirely would pass them. Timing recovery is what
    fails in a room, and these vectors have perfect timing.
-4. **Outstanding.** A **three-or-more machine contention campaign**, since §7's
-   parameters are currently reasoned rather than measured.
+4. **Outstanding.** A **three-or-more machine contention campaign**. §7's rule
+   is now derived from airtime rather than guessed, and is exercised against a
+   simulator that models overlap (`mcl-sdk/tests/test_rendezvous.c`), but
+   simulated air is not air.
 5. **Outstanding.** A profile identifier assigned under §10.
 
 **One of the five is closed, one is half closed, and three are outstanding.**
