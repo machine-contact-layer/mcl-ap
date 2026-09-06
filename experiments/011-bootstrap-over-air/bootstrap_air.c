@@ -426,6 +426,52 @@ static int do_decode(cell_t cell, const char *path)
     return 3;
 }
 
+/*
+ * Decode a file with the shipped receiver and report ONLY the outcome, with no
+ * expectation of what the payload should be.
+ *
+ * This is what the conformance vectors need: a negative vector has no expected
+ * payload, so a decoder that must be told one in advance cannot be run against
+ * it. The reason word matches the vocabulary in conformance/vectors/VECTORS.md,
+ * so the reference and the independent receiver are compared on the same terms
+ * rather than on two descriptions of the same thing.
+ */
+static int do_raw(const char *path)
+{
+    static mcl_ap_modem_scratch_t scratch;
+    uint8_t payload[MCL_AP_MODEM_MAX_PAYLOAD_BYTES];
+    mcl_ap_modem_config_t cfg;
+    mcl_ap_modem_rx_t info;
+    mcl_ap_modem_status_t st;
+    size_t count = 0u;
+    const char *word;
+
+    configure(&cfg, 0);
+    if (wav_read_pcm16(path, g_pcm, MAX_SAMPLES, &count) != WAV_OK) {
+        printf("io\n");
+        return 2;
+    }
+    memset(&info, 0, sizeof(info));
+    st = mcl_ap_modem_decode(&cfg, g_pcm, count, &scratch,
+                             payload, sizeof(payload), &info);
+
+    switch (st) {
+    case MCL_AP_MODEM_OK:                 word = "accept";       break;
+    case MCL_AP_MODEM_ERR_NOT_ACQUIRED:   word = "not acquired"; break;
+    case MCL_AP_MODEM_ERR_CRC:            word = "crc";          break;
+    case MCL_AP_MODEM_ERR_PAYLOAD:        word = "payload";      break;
+    case MCL_AP_MODEM_ERR_SYNC:           word = "sync";         break;
+    default:                              word = "other";        break;
+    }
+    printf("%s", word);
+    if (st == MCL_AP_MODEM_OK) {
+        printf(" ");
+        print_hex(payload, info.payload_bytes);
+    }
+    printf("\n");
+    return (st == MCL_AP_MODEM_OK) ? 0 : 3;
+}
+
 int main(int argc, char **argv)
 {
     cell_t cell;
@@ -449,6 +495,7 @@ int main(int argc, char **argv)
     argc = n + 1;
 
     if (argc >= 2 && strcmp(argv[1], "sizes") == 0) return do_sizes();
+    if (argc == 3 && strcmp(argv[1], "raw") == 0) return do_raw(argv[2]);
     if (argc == 3 && strcmp(argv[1], "hex") == 0) {
         if (parse_cell(argv[2], &cell) != 0) return 2;
         return do_hex(cell);

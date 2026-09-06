@@ -267,6 +267,21 @@ if(MCL_AP_BUILD_EXPERIMENTS AND EXISTS "${MCL_WIRE_DIR}/include/mcl/wire.h")
         C_STANDARD_REQUIRED YES
         C_EXTENSIONS NO)
 
+    # AP-BOOTSTRAP-1 conformance vectors. Includes src/ap_modem.c to reach
+    # modulate(), because a deliberately wrong CRC cannot be produced through
+    # the public encode API -- which computes it correctly, as it should.
+    add_executable(mcl_ap_make_vectors conformance/make_vectors.c)
+    target_include_directories(mcl_ap_make_vectors PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(mcl_ap_make_vectors PRIVATE mcl_ap_exp_wire_dep)
+    if(NOT WIN32)
+        target_link_libraries(mcl_ap_make_vectors PRIVATE m)
+    endif()
+    set_target_properties(mcl_ap_make_vectors PROPERTIES
+        C_STANDARD 99
+        C_STANDARD_REQUIRED YES
+        C_EXTENSIONS NO)
+
     if(MCL_AP_BUILD_TESTS)
         add_test(NAME mcl_ap_exp001_unit COMMAND mcl_ap_exp001_test)
         add_test(

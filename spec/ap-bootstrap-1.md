@@ -320,14 +320,32 @@ speaker's notch is not yet a bootstrap profile.
 
 Promotion to Stable requires:
 
-1. The band swept on **at least two transmitter classes that are not the
-   DFR1154**, with the pair selected from that evidence rather than inherited.
-2. A **clean-room receiver** written from this document and its vectors alone,
-   cross-testing against the reference in both directions.
-3. **PCM vectors**, positive and negative.
-4. A **three-or-more machine contention campaign**, since §7's parameters are
-   currently reasoned rather than measured.
-5. A profile identifier assigned under §10.
+1. **Outstanding.** The band swept on **at least two transmitter classes that
+   are not the DFR1154**, with the pair selected from that evidence rather than
+   inherited. This is the load-bearing gap.
+2. **Partly done.** A receiver written from this document alone now exists —
+   `conformance/independent/ap_bootstrap_rx.py`, sharing no code with `mcl-ap`,
+   in a language that cannot accidentally link it — and it agrees with the
+   reference on all nine vectors in both directions
+   (`conformance/check-vectors.sh`).
+
+   That demonstrates this document is **self-sufficient**: no parameter a
+   receiver needs lives only in the reference implementation. It does **not**
+   demonstrate the document is unambiguous to someone who has never seen that
+   implementation, because the same author wrote both. The remaining half needs
+   a different reader.
+3. **Done.** `conformance/vectors/`, three positive and six negative, each
+   negative refusing for a different reason. Their limit is stated in the
+   manifest and repeated here because it matters: they are noise-free, so a
+   receiver that omitted §6.4 entirely would pass them. Timing recovery is what
+   fails in a room, and these vectors have perfect timing.
+4. **Outstanding.** A **three-or-more machine contention campaign**, since §7's
+   parameters are currently reasoned rather than measured.
+5. **Outstanding.** A profile identifier assigned under §10.
+
+Two of the five are closed. The two that remain outstanding both need something
+this tree cannot contain — a second class of transmitter, and a third machine —
+and neither is closed by more text.
 
 Until then a deployment may implement `AP-BOOTSTRAP-1` and MUST NOT describe it
 as frozen.
