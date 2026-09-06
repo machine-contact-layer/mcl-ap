@@ -39,6 +39,28 @@ if [ -z "$REFERENCE" ]; then
     done
 fi
 
+# Still not found: build it. A gate that skips the half it cannot locate
+# reports a green run for a test it did not perform, which is worse than
+# failing.
+if [ -z "$REFERENCE" ] || [ ! -x "$REFERENCE" ]; then
+    if command -v cmake >/dev/null 2>&1; then
+        BUILD_DIR=${TMPDIR:-/tmp}/mcl-ap-vectors-build
+        echo "reference tool not found; building it in $BUILD_DIR"
+        if cmake -S "$ROOT" -B "$BUILD_DIR" \
+                 -DMCL_AP_BUILD_EXPERIMENTS=ON >/dev/null 2>&1 &&
+           cmake --build "$BUILD_DIR" \
+                 --target mcl_ap_exp011_bootstrap_air >/dev/null 2>&1
+        then
+            for candidate in \
+                "$BUILD_DIR/mcl_ap_exp011_bootstrap_air" \
+                "$BUILD_DIR/Release/mcl_ap_exp011_bootstrap_air.exe"
+            do
+                [ -x "$candidate" ] && REFERENCE="$candidate" && break
+            done
+        fi
+    fi
+fi
+
 failures=0
 checked=0
 
