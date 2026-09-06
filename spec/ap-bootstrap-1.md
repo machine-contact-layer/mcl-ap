@@ -255,8 +255,41 @@ repair an interval that is too short by construction.
 | Maximum announcements | 10 | before giving up and reporting nothing heard |
 | Backoff slots | 16 | candidate slots in a contention round |
 | Backoff slot width | 250 ms | one slot |
-| Response timeout | 3000 ms | before an unanswered offer is retried |
+| Response timeout | 6000 ms | before an unanswered offer is retried |
+| Solicitation timeout | 6000 ms | before an unanswered `PRESENCE` round is abandoned |
 | Offer retries | 2 | per bearer, before moving to the next |
+
+**These values are the profile's, not the integrator's.** An implementation
+claiming `MCL Stranger-Contact 1` on this medium **MUST** use them. Nothing on
+the wire carries a slot count or a timeout, so two builders who chose
+differently each behave correctly by their own lights and contend by neither's
+— and neither of them can detect it. The reference implementation refuses a
+configuration that deviates rather than accepting one, because a configuration
+error at the first builder is cheaper than an intermittent interoperability
+failure between two shipped products.
+
+**The response timeout is DERIVED, and the derivation is the point.** It was
+3000 ms, which is not merely tight but *impossible*: the legal maximum backoff
+alone is 15 × 250 = 3750 ms, so a peer behaving perfectly could be declared
+silent before it was permitted to answer. Replacing one guessed number with
+another would leave the same defect, so it comes from this profile's own
+figures:
+
+| Term | Value |
+|---|---:|
+| maximum contention delay, (16 − 1) × 250 ms | 3750 ms |
+| one deferral, a maximum frame's airtime | 787 ms |
+| the response itself, a maximum frame's airtime | 787 ms |
+| scheduling allowance | 500 ms |
+| **sum** | **5824 ms** |
+
+Frozen at the next round number above the sum. If the waveform changes this is
+**recomputed**, not adjusted.
+
+The solicitation timeout is numerically equal today and is a **separate
+parameter**, because it bounds a different wait (§8) and a future waveform
+change need not move both. Sharing one number is how a response timeout came to
+be shorter than the backoff it was supposed to contain.
 
 A machine that intends to transmit into the shared medium **MUST**:
 
@@ -311,11 +344,95 @@ deployment profile fixes, and `TRANSPORT_ACCEPT` or a timeout answers. Two
 independent builders converge because they were handed the same ordered list,
 not because they exchanged one.
 
-Simultaneous offers **MUST** be resolved by the existing rule in
-`mcl-link/spec/link-contact-ownership-v0.1.md`: the larger
+### 8.1 One machine owns each round — REQUIRED
+
+Ordered trial says *what* is offered. It does not say *who* offers, and on an
+unaddressed broadcast medium that omission does not stay abstract.
+
+`TRANSPORT_OFFER` carries no destination. Any machine that hears one and
+mandates the bearer may answer it. If every machine may also announce, respond,
+offer and accept at the same instant, then with two machines the roles happen
+to be complementary and nothing shows — and with three the exchange does not
+converge. Measured in simulation over 600 s, three machines on one medium:
+
+```
+36 BEARER_AGREED, 0 CANDIDATE_VALIDATED, 0 CONTACT_MIGRATED
+```
+
+Every agreement landed on an acceptor, no machine ever became a controller, and
+nothing drove a handoff. The cycle — A holding B as its peer, B holding C, C
+holding A — is stable and never breaks on its own.
+
+So each round has exactly one owner:
+
+| Object | Role |
+|---|---|
+| `PRESENCE` | solicitation |
+| `TRANSPORT_OFFER` | a contender's response |
+| `TRANSPORT_ACCEPT` | selection of one contender, by `migration_ref` |
+
+An implementation claiming `MCL Stranger-Contact 1` on this medium **MUST**:
+
+1. On successfully emitting a `PRESENCE`, become the **solicitor** for that
+   round and arm the solicitation timeout. A solicitor **MUST NOT** become a
+   responder to another machine's `PRESENCE` during that round.
+2. On receiving a `PRESENCE` **before** transmitting its own, cancel the
+   pending announcement and become a **responder** for that round. A responder
+   **MUST NOT** consume another machine's `TRANSPORT_OFFER`: it is answering a
+   round it does not own.
+3. As solicitor, accept the **first** valid `TRANSPORT_OFFER` of a mandated
+   bearer, bind that contender, and ignore later contenders for the round.
+4. As responder, match `TRANSPORT_ACCEPT` on the outstanding
+   `migration_ref`, `transport_id` and `profile_id`. On the first match, bind
+   `peer_ref` from the acceptance, become the migration controller, and
+   proceed. A contender whose reference is not the one echoed **MUST NOT**
+   adopt the transaction; it **SHOULD** return to contention rather than hold
+   the medium for its remaining offer retries.
+
+Two `PRESENCE` frames in one slot collide, nobody hears either, both solicitors
+time out and both re-draw. This is why the **first** announcement is backed off
+like every other transmission: it is otherwise the one synchronised instant in
+the whole lifecycle, and machines powered on from a single switch meet exactly
+there.
+
+No wire field was added for any of this. `TRANSPORT_ACCEPT` already echoes
+`migration_ref`, and that echo is the selection.
+
+### 8.2 `migration_ref` MUST be random on this medium
+
+Because `migration_ref` now selects one contender out of several, a value
+derived from `source_ref` is not sufficient here.
+
+`source_ref` is normatively a correlation reference with **no uniqueness
+property**. Two builders may legally hold the same one, so a reference computed
+as a function of `source_ref` and a local counter is identical on both of their
+first transactions — and one `TRANSPORT_ACCEPT` then tells both of them they
+were selected.
+
+An implementation claiming `MCL Stranger-Contact 1` on this medium therefore
+**MUST** draw a fresh, non-zero, random 32-bit `migration_ref` per transaction.
+A retransmission **MUST** reuse the same value; a new transaction **MUST** draw
+another. Randomness is already required by §7.2, so this adds no dependency.
+
+A solicitor that observes two `TRANSPORT_OFFER`s carrying one `migration_ref`
+from different sources **MUST** abandon the round rather than select either. It
+cannot name the transaction it would be accepting, and selecting anyway leaves
+two machines believing they were chosen.
+
+This is an interaction constraint of *this profile*. It does not make
+`migration_ref` an identity or a security property anywhere in MCL.
+
+### 8.3 Glare
+
+Simultaneous offers cannot arise under §8.1: only a responder emits an offer
+and only the solicitor consumes one, so there is no state in which two machines
+hold offers outstanding to each other.
+
+Where a caller drives `mcl_contact_t` directly, outside this profile's round
+structure, the existing rule in
+`mcl-link/spec/link-contact-ownership-v0.1.md` still applies: the larger
 `(source_ref, migration_ref)` key wins the controller role, and an exact tie
-aborts both transactions. Peers that simply accept each other's offers end up
-holding two live transactions on one contact.
+aborts both transactions.
 
 ## 9. Evidence
 
