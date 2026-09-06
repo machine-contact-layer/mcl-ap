@@ -638,20 +638,69 @@ static double abs_at(const path_t *p, double hz)
  * It was not: the search scored the chirp band and the incumbent line scored
  * only the two tones, so the "+11.38 dB improvement" printed underneath was a
  * difference between two different measures rather than between two bands.
+ *
+ * TWO FAILURE MODES ARE NOT ONE NUMBER.
+ *
+ * The two FSK tones and the acquisition chirp fail differently, and folding
+ * them into a single min() said they did not:
+ *
+ *   a dead FSK TONE is fatal. The detector reads one bin per symbol, so a
+ *   null there is a bit error every time that symbol is sent. A strict
+ *   minimum is the right aggregate.
+ *
+ *   a null inside the CHIRP is not. The receiver correlates against the whole
+ *   sweep, so one bad bin out of twenty costs a fraction of the correlation
+ *   peak, not acquisition. A strict minimum over the swept band therefore lets
+ *   a SINGLE BIN decide the whole pair.
+ *
+ * That is not hypothetical here. The incumbent 3000/6000 pair scored 32.64 dB
+ * under the old shape and its two tones measure 55.75 dB; the 32.64 came from
+ * one bin at 3600 Hz on the host speaker, where the response drops 25 dB
+ * between its neighbours at 3300 and 3900. The published table read that as
+ * the incumbent being 23 dB worse than the winner. It is not: the difference
+ * was one bin, aggregated as though it were the band.
+ *
+ * So the terms are computed separately, all of them are reported, and the
+ * ranking is min(tone_min, chirp_mean). THE AGGREGATE IS A MODELLING CHOICE
+ * AND HAS NOT BEEN VALIDATED OVER AIR -- a mean in dB is a geometric mean of
+ * powers, which penalises a null harder than a matched filter really does and
+ * far less than a minimum does. It is reported next to the minimum and the
+ * count of weak bins so that a reader can see the shape rather than inherit
+ * it.
  */
-static double pair_score(const path_t *path, size_t n_paths,
-                         double f0, double f1, int *admissible)
+typedef struct {
+    double tone_min;    /* strict min over f0 and f1, worst path */
+    double chirp_mean;  /* mean SNR over the swept measured bins, worst path */
+    double chirp_min;   /* strict min over the swept bins, worst path */
+    size_t chirp_bins;  /* how many measured bins the sweep crosses */
+    double rank;        /* min(tone_min, chirp_mean); the maximised quantity */
+    int admissible;
+} pair_terms_t;
+
+static pair_terms_t pair_score(const path_t *path, size_t n_paths,
+                               double f0, double f1)
 {
-    double score = 1e9;
+    pair_terms_t out;
     size_t k, m;
 
-    *admissible = 1;
+    out.tone_min = 1e9;
+    out.chirp_mean = 1e9;
+    out.chirp_min = 1e9;
+    out.chirp_bins = 0;
+    out.rank = -1e9;
+    out.admissible = 1;
+
     for (k = 0; k < n_paths; ++k) {
         int have0 = 0, have1 = 0;
         double a = level_at(&path[k], f0, &have0);
         double b = level_at(&path[k], f1, &have1);
         double weaker = (a < b) ? a : b;
-        if (!have0 || !have1) { *admissible = 0; return -1e9; }
+        double sum = 0.0;
+        size_t bins = 0;
+        double this_min = 1e9;
+
+        if (!have0 || !have1) { out.admissible = 0; return out; }
+        if (weaker < out.tone_min) out.tone_min = weaker;
         /*
          * THE PREAMBLE IS PART OF THE BAND, AND IT COST A BURST TO LEARN IT.
          *
@@ -682,13 +731,21 @@ static double pair_score(const path_t *path, size_t n_paths,
         for (m = 0; m < path[k].count; ++m) {
             double hz = path[k].tone[m].hz;
             if (hz < f0 - 1000.0 || hz > f1) continue;
-            if (path[k].tone[m].snr_db < weaker) {
-                weaker = path[k].tone[m].snr_db;
+            sum += path[k].tone[m].snr_db;
+            bins++;
+            if (path[k].tone[m].snr_db < this_min) {
+                this_min = path[k].tone[m].snr_db;
             }
         }
-        if (weaker < score) score = weaker;
+        if (bins == 0) { out.admissible = 0; return out; }
+        if (bins > out.chirp_bins) out.chirp_bins = bins;
+        if (sum / (double)bins < out.chirp_mean) {
+            out.chirp_mean = sum / (double)bins;
+        }
+        if (this_min < out.chirp_min) out.chirp_min = this_min;
     }
-    return score;
+    out.rank = (out.tone_min < out.chirp_mean) ? out.tone_min : out.chirp_mean;
+    return out;
 }
 
 static int cmd_minimax(int argc, char **argv)
@@ -697,12 +754,25 @@ static int cmd_minimax(int argc, char **argv)
     size_t n_paths = 0;
     size_t i, j, k;
     double best_score = -1e9, best_f0 = 0.0, best_f1 = 0.0;
+    double floor_db = 0.0;
+    int floor_given = 0;
     const path_t *ref;
 
     for (i = 2; i < (size_t)argc && n_paths < MAX_PATHS; ++i) {
-        int rc = load_path(argv[i], &path[n_paths]);
-        if (rc) return rc;
-        n_paths++;
+        if (!strcmp(argv[i], "--floor")) {
+            if (i + 1 >= (size_t)argc) {
+                fprintf(stderr, "--floor needs a value in dB\n");
+                return 2;
+            }
+            floor_db = atof(argv[++i]);
+            floor_given = 1;
+            continue;
+        }
+        {
+            int rc = load_path(argv[i], &path[n_paths]);
+            if (rc) return rc;
+            n_paths++;
+        }
     }
     if (n_paths == 0) return 2;
     ref = &path[0];
@@ -739,7 +809,9 @@ static int cmd_minimax(int argc, char **argv)
         printf("  path %lu  %s  (%lu tones)\n",
                (unsigned long)i, path[i].label, (unsigned long)path[i].count);
     }
-    printf("\nscore = weaker tone's SNR above the room, on the worst path\n\n");
+    printf("\nranked on min(tone_min, chirp_mean), both in dB of SNR above\n"
+           "each path's own measured room floor. The two terms aggregate\n"
+           "DIFFERENTLY, and pair_score() says why.\n\n");
 
     for (i = 0; i < ref->count; ++i) {
         for (j = 0; j < ref->count; ++j) {
@@ -781,9 +853,9 @@ static int cmd_minimax(int argc, char **argv)
             if (f1 > 9000.0) continue;
 
             {
-                int ok = 1;
-                score = pair_score(path, n_paths, f0, f1, &ok);
-                if (!ok) continue;
+                pair_terms_t t = pair_score(path, n_paths, f0, f1);
+                if (!t.admissible) continue;
+                score = t.rank;
             }
 
             if (score > best_score ||
@@ -801,7 +873,23 @@ static int cmd_minimax(int argc, char **argv)
     }
 
     printf("WINNER  %.0f / %.0f Hz\n", best_f0, best_f1);
-    printf("worst-path weaker-tone SNR: %.2f dB\n\n", best_score);
+    {
+        pair_terms_t t = pair_score(path, n_paths, best_f0, best_f1);
+        printf("rank = min(tone_min, chirp_mean) = %.2f dB\n", t.rank);
+        printf("  tone_min   %7.2f dB   strict min over f0 and f1, worst path\n",
+               t.tone_min);
+        printf("  chirp_mean %7.2f dB   mean over %lu swept bins, worst path\n",
+               t.chirp_mean, (unsigned long)t.chirp_bins);
+        printf("  chirp_min  %7.2f dB   strict min over the swept bins\n",
+               t.chirp_min);
+        if (t.chirp_min < t.chirp_mean - 15.0) {
+            printf("  NOTE: one swept bin sits %.1f dB below the mean of the\n"
+                   "        band. Under the old shape that single bin WAS the\n"
+                   "        score. It is reported, not ranked on.\n",
+                   t.chirp_mean - t.chirp_min);
+        }
+    }
+    printf("\n");
     printf("per-path detail for the winning pair:\n");
     printf("  %-28s %9s %9s %9s %9s\n", "path",
            "f0 SNR", "f1 SNR", "f0 dBFS", "f1 dBFS");
@@ -817,16 +905,63 @@ static int cmd_minimax(int argc, char **argv)
     /* The incumbent, scored the same way, so the comparison is like for like
        rather than a new number against a remembered one. */
     {
-        int ok = 1;
-        double inc = pair_score(path, n_paths, 3000.0, 6000.0, &ok);
+        pair_terms_t inc = pair_score(path, n_paths, 3000.0, 6000.0);
         printf("\nincumbent AP-BOOTSTRAP-1 pair 3000/6000 Hz, scored the "
-               "same way\n(preamble chirp included): ");
-        if (!ok) {
-            printf("not in the measured set\n");
+               "same way:\n");
+        if (!inc.admissible) {
+            printf("  not in the measured set\n");
         } else {
-            printf("%.2f dB SNR\n", inc);
-            printf("minimax improvement: %+.2f dB\n", best_score - inc);
+            printf("  rank %.2f dB  [tone_min %.2f  chirp_mean %.2f  "
+                   "chirp_min %.2f]\n",
+                   inc.rank, inc.tone_min, inc.chirp_mean, inc.chirp_min);
+            printf("  ranking difference: %+.2f dB\n", best_score - inc.rank);
+            printf("  TONE difference:    %+.2f dB\n",
+                   pair_score(path, n_paths, best_f0, best_f1).tone_min
+                   - inc.tone_min);
         }
+    }
+
+    /*
+     * THE ABSOLUTE FLOOR, WHICH THE RANKING DOES NOT CONTAIN.
+     *
+     * A minimax is entirely RELATIVE. It will crown the best pair in a set
+     * where every pair is unusable, and say so in exactly the same words it
+     * uses for a good one -- the winner of a race nobody could finish still
+     * gets a first place. Whether a band can carry a frame is a separate
+     * question with a separate answer, so it is asked separately.
+     *
+     * There is no default. A floor nobody justified, applied silently, is the
+     * same mistake as a timing constant nobody derived: the operator states
+     * one and the tool checks it, or the tool says plainly that it has ranked
+     * and not judged.
+     */
+    if (floor_given) {
+        int below = 0;
+        printf("\nviability against the stated floor of %.2f dB SNR:\n",
+               floor_db);
+        for (k = 0; k < n_paths; ++k) {
+            int h0 = 0, h1 = 0;
+            double a = level_at(&path[k], best_f0, &h0);
+            double b = level_at(&path[k], best_f1, &h1);
+            double w = (a < b) ? a : b;
+            printf("  %-28s weaker tone %7.2f dB   %s\n", path[k].label, w,
+                   (w < floor_db) ? "BELOW FLOOR" : "ok");
+            if (w < floor_db) below = 1;
+        }
+        if (below) {
+            printf("\nNOT VIABLE. This is the best pair in the measured set "
+                   "and it is\nstill below the floor you stated. A ranking "
+                   "cannot tell you that;\nthat is why the floor is a "
+                   "separate argument.\n");
+            return 5;
+        }
+        printf("\nVIABLE at the stated floor.\n");
+    } else {
+        printf("\nNO VIABILITY FLOOR GIVEN. This output is a RELATIVE ranking "
+               "only.\nIt says which pair is best among those measured and "
+               "NOTHING about\nwhether that pair can carry a frame. Pass "
+               "--floor <dB> to ask that\nquestion; there is deliberately no "
+               "default.\n");
     }
     return 0;
 }
