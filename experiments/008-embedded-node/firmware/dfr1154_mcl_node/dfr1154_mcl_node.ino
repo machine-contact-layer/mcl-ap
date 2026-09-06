@@ -374,6 +374,139 @@ static void transmit(const uint8_t *payload, size_t payload_len,
   Serial.println("MCLNODE SEND DONE");
 }
 
+/*
+ * SWEEP -- the response of THIS transmitter, measured in one emission.
+ *
+ * WHY THIS IS A FIRMWARE COMMAND AND NOT A SEQUENCE OF SENDS
+ *
+ * The band question is which FSK pair survives every path in the room. The
+ * obvious way to answer it is to send a frame at each candidate band and see
+ * which decode -- and that is twenty-seven emissions for one transmitter,
+ * in a room with people in it. This is the same measurement in ONE continuous
+ * emission: a ladder of tones, each held long enough to measure, streamed to
+ * the amplifier without a gap so the host records a single burst.
+ *
+ * WHY THE TONES ARE MULTIPLES OF 300 Hz
+ *
+ * 300 baud with 160 samples per symbol at 48 kHz puts an integer number of
+ * cycles in a symbol only when the tone is a multiple of 300 Hz. A candidate
+ * that is not is a candidate the modem cannot use, so measuring it would be
+ * measuring something that will never be selected.
+ *
+ * WHY THERE IS A MARKER
+ *
+ * A tone's harmonics land on other candidates: 1200 Hz puts energy at 2400,
+ * 3600 and 4800, all of which are slots in this ladder. If the host looked for
+ * each frequency anywhere in the capture, it would credit a low tone's
+ * distortion to a high tone and choose a band on the strength of a harmonic.
+ * The marker makes the slot boundaries recoverable, so each tone is measured
+ * during its own slot and the host can also measure what leaks into the
+ * others. Leakage that large is a finding about the amplifier, not a band.
+ */
+constexpr float kSweepMarkerHz = 6000.0f;
+constexpr uint32_t kSweepMarkerMs = 300;
+constexpr uint32_t kSweepGapMs = 100;
+constexpr uint32_t kSweepSlotMs = 100;
+constexpr float kSweepRampMs = 5.0f;
+
+/* Emit one tone, ramped at both ends. The ramp is not decoration: a hard
+   start is a step, a step is broadband, and broadband energy in a slot is
+   exactly the thing this measurement must not manufacture. */
+static void sweep_tone(float hz, uint32_t ms) {
+  const size_t total = static_cast<size_t>(kSampleRateHz / 1000.0f * ms);
+  const size_t ramp = static_cast<size_t>(kSampleRateHz / 1000.0f * kSweepRampMs);
+  const float w = 2.0f * 3.14159265358979f * hz / static_cast<float>(kSampleRateHz);
+  size_t done = 0;
+
+  while (done < total) {
+    size_t n = total - done;
+    if (n > 4800) n = 4800;
+    for (size_t i = 0; i < n; ++i) {
+      size_t k = done + i;
+      float a = 0.7f * g_emit_gain;
+      if (k < ramp) {
+        a *= 0.5f * (1.0f - cosf(3.14159265358979f * static_cast<float>(k)
+                                 / static_cast<float>(ramp)));
+      } else if (k + ramp > total) {
+        a *= 0.5f * (1.0f - cosf(3.14159265358979f
+                                 * static_cast<float>(total - k)
+                                 / static_cast<float>(ramp)));
+      }
+      g_audio[i] = static_cast<int16_t>(a * 32767.0f * sinf(w * static_cast<float>(k)));
+    }
+    speaker.write(reinterpret_cast<uint8_t *>(g_audio), n * sizeof(int16_t));
+    done += n;
+  }
+}
+
+static void sweep_silence(uint32_t ms) {
+  const size_t total = static_cast<size_t>(kSampleRateHz / 1000.0f * ms);
+  size_t done = 0;
+
+  while (done < total) {
+    size_t n = total - done;
+    if (n > 4800) n = 4800;
+    for (size_t i = 0; i < n; ++i) g_audio[i] = 0;
+    speaker.write(reinterpret_cast<uint8_t *>(g_audio), n * sizeof(int16_t));
+    done += n;
+  }
+}
+
+/* SWEEP [f_start f_end step], Hz. Defaults to 1200..9000 by 300. */
+static void sweep(const String &args) {
+  float f_start = 1200.0f, f_end = 9000.0f, step = 300.0f;
+  unsigned count;
+
+  if (!speaker_ready) {
+    Serial.println("MCLNODE ERROR AMP_NOT_READY");
+    return;
+  }
+  if (args.length() != 0) {
+    int a = args.indexOf(' ');
+    int b = (a < 0) ? -1 : args.indexOf(' ', a + 1);
+    if (a < 0 || b < 0) {
+      Serial.println("MCLNODE ERROR SWEEP_ARGS");
+      return;
+    }
+    f_start = args.substring(0, a).toFloat();
+    f_end = args.substring(a + 1, b).toFloat();
+    step = args.substring(b + 1).toFloat();
+  }
+  if (f_start < 500.0f || f_end <= f_start || f_end > 20000.0f || step < 50.0f) {
+    Serial.println("MCLNODE ERROR SWEEP_RANGE");
+    return;
+  }
+
+  count = 0;
+  for (float f = f_start; f <= f_end + 0.5f; f += step) count++;
+
+  Serial.printf("MCLNODE SWEEP marker=%u markerms=%u gapms=%u slotms=%u "
+                "start=%u end=%u step=%u tones=%u gain=%u%%\n",
+                static_cast<unsigned>(kSweepMarkerHz),
+                static_cast<unsigned>(kSweepMarkerMs),
+                static_cast<unsigned>(kSweepGapMs),
+                static_cast<unsigned>(kSweepSlotMs),
+                static_cast<unsigned>(f_start),
+                static_cast<unsigned>(f_end),
+                static_cast<unsigned>(step),
+                count,
+                static_cast<unsigned>(g_emit_gain * 100.0f + 0.5f));
+  Serial.println("MCLNODE SWEEP ARMED");
+  Serial.flush();
+
+  /* The same 500 ms guard the transmit path uses, so the host recorder is
+     already running before any sound is emitted. */
+  delay(500);
+  digitalWrite(kActivityLedPin, HIGH);
+  sweep_tone(kSweepMarkerHz, kSweepMarkerMs);
+  sweep_silence(kSweepGapMs);
+  for (float f = f_start; f <= f_end + 0.5f; f += step) {
+    sweep_tone(f, kSweepSlotMs);
+  }
+  digitalWrite(kActivityLedPin, LOW);
+  Serial.println("MCLNODE SWEEP DONE");
+}
+
 static int hex_nibble(char c) {
   if (c >= '0' && c <= '9') return c - '0';
   if (c >= 'a' && c <= 'f') return c - 'a' + 10;
@@ -634,13 +767,15 @@ void loop() {
   command.trim();
 
   if (command == "PING") {
-    Serial.println("MCLNODE PONG v4");
+    Serial.println("MCLNODE PONG v5");
   } else if (command == "SELFTEST") {
     selftest();
   } else if (command.startsWith("SEND HEX ")) {
     send_hex(command.substring(9));
   } else if (command.startsWith("BAND ")) {
     set_band(command.substring(5));
+  } else if (command == "SWEEP" || command.startsWith("SWEEP ")) {
+    sweep(command.length() > 5 ? command.substring(6) : String(""));
   } else if (command.startsWith("GAIN ")) {
     set_gain(command.substring(5));
   } else if (command == "SEND FRAME") {

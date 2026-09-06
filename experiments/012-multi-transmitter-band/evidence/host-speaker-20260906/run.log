@@ -1,0 +1,21 @@
+﻿=== experiment 012: multi-transmitter band sweep ===
+rig:          host-speaker
+evidence:     C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\012-multi-transmitter-band\evidence\host-speaker-20260906
+burst budget: 3
+capture gain: 0.12   (FIXED -- declared into the TSV)
+emit gain:    50%     (FIXED -- declared into the TSV)
+
+levels on entry: render 1, capture 0.2754511
+capture gain set to 0.12
+ladder: C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\012-multi-transmitter-band\ladder.wav (copied into the evidence directory, so what was emitted is recorded next to what was heard)
+render volume set to 25%
+burst 1/3: host speaker tone ladder, 27 tones, 3.1 s continuous
+
+capture: C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\012-multi-transmitter-band\evidence\host-speaker-20260906\sweep.wav
+peak:    -20.7 dB
+
+bursts used: 1 of 3
+
+next, with no further emission:
+  band_sweep slots "C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\012-multi-transmitter-band\evidence\host-speaker-20260906\sweep.wav" host-speaker --capgain 0.12 --emitgain 50 > host-speaker.tsv
+levels restored: render 1, capture 0.2754511

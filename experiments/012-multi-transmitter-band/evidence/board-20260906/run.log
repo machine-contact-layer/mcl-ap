@@ -1,0 +1,22 @@
+﻿=== experiment 012: multi-transmitter band sweep ===
+rig:          board
+evidence:     C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\012-multi-transmitter-band\evidence\board-20260906
+burst budget: 4
+capture gain: 0.12   (FIXED -- declared into the TSV)
+emit gain:    50%     (FIXED -- declared into the TSV)
+
+levels on entry: render 1, capture 0.2754511
+capture gain set to 0.12
+board hard-reset before the run
+board: MCLNODE PONG v5
+burst 1/4: board tone ladder, 27 tones, 3.1 s continuous
+  MCLNODE SWEEP marker=6000 markerms=300 gapms=100 slotms=100 start=1200 end=9000 step=300 tones=27 gain=50% MCLNODE SWEEP ARMED
+
+capture: C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\012-multi-transmitter-band\evidence\board-20260906\sweep.wav
+peak:    -9.3 dB
+
+bursts used: 1 of 4
+
+next, with no further emission:
+  band_sweep slots "C:\Users\marsm\Downloads\mcl\mcl-ap\experiments\012-multi-transmitter-band\evidence\board-20260906\sweep.wav" board --capgain 0.12 --emitgain 50 > board.tsv
+levels restored: render 1, capture 0.2754511
