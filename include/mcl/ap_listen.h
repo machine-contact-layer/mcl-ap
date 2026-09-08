@@ -49,33 +49,24 @@
  * whether a part can listen continuously at all, so here it is, measured
  * rather than estimated.
  *
- * Acquisition is a coarse correlation at MCL_AP_MODEM_DECIMATION stride over
- * every new sample position, so with the default 0.2 s chirp the steady-state
- * work is (9600 / 3) complex multiply-accumulates per sample of audio -- about
- * 154 million per second of real time at 48 kHz. That is the number to compare
- * a candidate part against.
+ * The reference receiver uses a staged acquisition path: a sparse coarse
+ * correlation, a measured weak-candidate gate, a three-point full-rate check,
+ * and deferred body demodulation. The gate and sparse strides are reference
+ * implementation parameters, not AP protocol requirements.
  *
- * On a DFR1154 (ESP32-S3, 240 MHz, single-precision FPU, no double in
- * hardware) the MCL autonomous node measured 0.0888 ms per searched sample
- * position, or about 11 000 samples per second. Real time needs 48 000. So
- * this part is roughly four times short of continuous listening and cannot do
- * it, however the application is arranged -- the gap is arithmetic, not
- * scheduling.
+ * On the DFR1154 (ESP32-S3, 240 MHz), a dedicated I2S producer writes into a
+ * PSRAM queue while the portable decoder runs from internal DRAM. A positive
+ * 22-second trial recovered three consecutive canonical PRESENCE objects while
+ * capturing 1,058,816 samples with zero capture drops and zero unscanned
+ * samples. A quiet eight-second control captured 385,024 samples, drained the
+ * queue to zero, and kept the maximum poll at 20 ms. These receipts supersede
+ * the earlier direct read-then-search result that was four times short of real
+ * time; see the autonomous-node runs directory for both the negative history
+ * and the corrected measurement.
  *
- * That is not the end of acoustic bootstrap on such a part. It is the reason
- * AP-BOOTSTRAP-1 repeats: a receiver that captures a bounded window and then
- * decodes it, as Experiment 008 does at E4, is deaf while it decodes, and
- * repetition is what makes a duty-cycled receiver reachable. Choose that
- * shape when the arithmetic above does not fit; choose continuous listening
- * when it does.
- *
- * Two costs that are NOT proportional to audio were removed in the course of
- * that measurement, and a caller reusing one scratch across polls gets the
- * benefit automatically: the quadrature reference and its statistics are pure
- * functions of the configuration, and are now built once per scratch rather
- * than once per decode. See the cache note on mcl_ap_modem_scratch_t. Together
- * they were 4x on this part -- a one-shot decoder never noticed them, because
- * it pays them once per capture.
+ * A port still has to prove its own producer/queue/decoder schedule. The API
+ * exposes overruns and unscanned samples because a listener that silently
+ * drops audio can otherwise make a missed call look exactly like a quiet room.
  *
  * There is no anomaly detector here, and there should not be. The preamble
  * correlator IS the detector: it is a matched filter for exactly the thing

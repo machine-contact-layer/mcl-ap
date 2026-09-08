@@ -101,6 +101,7 @@ void mcl_ap_modem_default_config(mcl_ap_modem_config_t *config)
     config->detection_threshold = 0.40f;
     config->training_bits = (uint16_t)MCL_AP_MODEM_TRAINING_BITS;
     config->max_search_samples = 0u;   /* the whole buffer */
+    config->refinement_guard_samples = 0u;
 }
 
 /* ---------------------------------------------------------- the preamble */
@@ -202,7 +203,8 @@ static size_t preamble_iq_cached(const mcl_ap_modem_config_t *config,
      * reference is, which is the only relationship worth maintaining.
      */
     reference_stats(scratch->ref_i, scratch->ref_q,
-                    n / MCL_AP_MODEM_DECIMATION, MCL_AP_MODEM_DECIMATION,
+                    n / MCL_AP_MODEM_COARSE_TAP_STRIDE,
+                    MCL_AP_MODEM_COARSE_TAP_STRIDE,
                     &scratch->cached_coarse_mean_i,
                     &scratch->cached_coarse_mean_q,
                     &scratch->cached_coarse_energy);
@@ -216,6 +218,27 @@ static size_t preamble_iq_cached(const mcl_ap_modem_config_t *config,
     scratch->cached_f_end_hz = config->preamble_f_end_hz;
     scratch->cached_duration_s = config->preamble_duration_s;
     return n;
+}
+
+mcl_ap_modem_status_t mcl_ap_modem_prepare(
+    const mcl_ap_modem_config_t *config,
+    mcl_ap_modem_scratch_t *scratch)
+{
+    if (config == NULL || scratch == NULL) {
+        return MCL_AP_MODEM_ERR_INVALID_ARGUMENT;
+    }
+    return preamble_iq_cached(config, scratch) != 0u
+               ? MCL_AP_MODEM_OK
+               : MCL_AP_MODEM_ERR_INVALID_ARGUMENT;
+}
+
+void mcl_ap_modem_scratch_invalidate(mcl_ap_modem_scratch_t *scratch)
+{
+    if (scratch == NULL) {
+        return;
+    }
+    scratch->cache_magic = 0u;
+    scratch->cached_ref_len = 0u;
 }
 
 /*
@@ -420,7 +443,9 @@ static void reference_stats(const float *ref_i, const float *ref_q,
  * acquisition at whatever offset happens to be loudest.
  */
 /*
- * One scan of the correlation surface, over offsets [lo, hi] at `stride`.
+ * One scan of the correlation surface, over offsets [lo, hi]. `tap_stride`
+ * controls how many reference/input samples score one candidate;
+ * `offset_step` controls how densely candidate starts are tested.
  *
  * WHY THIS IS ONE PASS AND NOT TWO
  *
@@ -436,48 +461,91 @@ static void reference_stats(const float *ref_i, const float *ref_q,
  *      sum(ref * x) - mean_ref * sum(x), because sum(ref - mean_ref) is zero.
  *      So the mean is needed only through sum(x), which the scan already has.
  *
- *   2. Successive candidate windows differ by exactly one sample of the
- *      strided subsequence, so sum(x) and sum(x^2) slide: drop the sample
- *      leaving, add the sample entering. They are maintained in int64 over
- *      the raw PCM, which is exact -- a float running sum over 3200 squared
- *      samples drifts, and a normalization that drifts turns into a
- *      correlation that drifts.
+ * The original implementation coupled those two strides so window energy
+ * could slide by one tap. That forced a receiver to spend 1/9 of the full
+ * reference on every 1/9-position candidate. Decoupling them makes the
+ * candidate grid fine enough to catch the chirp while scoring it with 1/18
+ * of the reference.
  *
- * What is left in the inner loop is two multiply-accumulates per tap.
+ * Energy still slides rather than being recomputed. With an 18-sample tap
+ * stride and a nine-sample candidate step there are two interleaved lanes:
+ * candidates 0,18,36... share one strided window, and 9,27,45... share the
+ * other. Each lane drops and adds one sample when it advances. This matters
+ * on a 32-bit target: recomputing sum-of-squares put a 64-bit multiply back
+ * inside every tap and was measured to be slower than the denser search.
  */
+#define MCL_AP_SCAN_MAX_LANES 16u
+/* The retained 74-file corpus puts every real preamble at >=0.479970 in the
+   sparse pass and every no-preamble refusal at <=0.199474. At the default
+   0.40 final threshold, 5/8 is 0.25: inside that measured gap, with room on
+   both sides. Scaling with the caller's threshold preserves the meaning of a
+   deliberately stricter or looser detector. */
+#define MCL_AP_COARSE_GATE_RATIO 0.625f
+
 static void scan(const float *ref_i, const float *ref_q,
                  float mean_i, float mean_q, float ref_energy,
-                 const int16_t *pcm, size_t count, size_t stride,
+                 const int16_t *pcm, size_t count, size_t tap_stride,
+                 size_t offset_step,
                  size_t lo, size_t hi,
                  size_t *best_index, float *best_value)
 {
     const float inv = 1.0f / PCM_SCALE;
-    int64_t sum = 0;
-    int64_t sumsq = 0;
-    size_t span = count * stride;   /* samples the window covers */
+    int64_t lane_sum[MCL_AP_SCAN_MAX_LANES] = {0};
+    int64_t lane_sumsq[MCL_AP_SCAN_MAX_LANES] = {0};
+    uint8_t lane_ready[MCL_AP_SCAN_MAX_LANES] = {0};
+    size_t lane_count = 0u;
     size_t i, j;
+
+    if (offset_step != 0u && tap_stride % offset_step == 0u) {
+        lane_count = tap_stride / offset_step;
+        if (lane_count > MCL_AP_SCAN_MAX_LANES) {
+            lane_count = 0u;
+        }
+    }
 
     *best_index = lo;
     *best_value = -1.0f;
 
-    for (j = 0u; j < count; ++j) {
-        int32_t v = pcm[lo + j * stride];
-        sum += v;
-        sumsq += (int64_t)v * (int64_t)v;
-    }
-
-    for (i = lo; ; i += stride) {
+    for (i = lo; ; i += offset_step) {
+        size_t lane = (lane_count != 0u)
+                          ? ((i - lo) / offset_step) % lane_count
+                          : 0u;
+        int64_t sum = 0;
+        int64_t sumsq = 0;
         float corr_i = 0.0f;
         float corr_q = 0.0f;
-        float sum_scaled = (float)sum * inv;
+        float sum_scaled;
         float energy;
         float norm;
 
-        for (j = 0u; j < count; ++j) {
-            float x = (float)pcm[i + j * stride] * inv;
-            corr_i += ref_i[j * stride] * x;
-            corr_q += ref_q[j * stride] * x;
+        if (lane_count != 0u && lane_ready[lane]) {
+            int32_t leaving = pcm[i - tap_stride];
+            int32_t entering = pcm[i + (count - 1u) * tap_stride];
+            lane_sum[lane] += entering - leaving;
+            lane_sumsq[lane] += (int64_t)entering * (int64_t)entering
+                                - (int64_t)leaving * (int64_t)leaving;
+            sum = lane_sum[lane];
+            sumsq = lane_sumsq[lane];
+        } else {
+            for (j = 0u; j < count; ++j) {
+                int32_t raw = pcm[i + j * tap_stride];
+                sum += raw;
+                sumsq += (int64_t)raw * (int64_t)raw;
+            }
+            if (lane_count != 0u) {
+                lane_sum[lane] = sum;
+                lane_sumsq[lane] = sumsq;
+                lane_ready[lane] = 1u;
+            }
         }
+
+        for (j = 0u; j < count; ++j) {
+            int32_t raw = pcm[i + j * tap_stride];
+            float x = (float)raw * inv;
+            corr_i += ref_i[j * tap_stride] * x;
+            corr_q += ref_q[j * tap_stride] * x;
+        }
+        sum_scaled = (float)sum * inv;
         corr_i -= mean_i * sum_scaled;
         corr_q -= mean_q * sum_scaled;
 
@@ -497,53 +565,47 @@ static void scan(const float *ref_i, const float *ref_q,
             }
         }
 
-        if (i + stride > hi) {
+        if (i + offset_step > hi) {
             break;
-        }
-        /* Slide by one strided sample. */
-        {
-            int32_t leaving = pcm[i];
-            int32_t entering = pcm[i + span];
-            sum += entering - leaving;
-            sumsq += (int64_t)entering * (int64_t)entering
-                   - (int64_t)leaving * (int64_t)leaving;
         }
     }
 }
 
 /*
- * Acquisition: coarse search at a stride, then refine at full rate.
+ * Acquisition: sparse search followed by a three-point full-rate check.
  *
  * An exhaustive full-rate search is ~9600 multiply-accumulates per candidate
  * offset across tens of thousands of offsets -- seconds of work on a 240 MHz
- * microcontroller. Striding by 3 divides that by 9.
+ * microcontroller. An 18-sample tap stride and nine-sample candidate step use
+ * 1/162 of that coarse multiply-accumulate count.
  *
- * It costs nothing in generality. The refinement pass re-examines every
- * full-rate offset within one stride of the coarse peak, so the result is the
- * peak an exhaustive search would find -- unless the correlation surface has
- * a second peak the coarse pass ranks higher, which is a real ambiguity in
- * the signal rather than an artefact of the resolution.
- *
- * The stride is 3 and not 4 because 4 puts the effective Nyquist limit at
- * exactly 6 kHz, the top of the chirp. 3 puts it at 8 kHz, so the coarse pass
- * sees the whole preamble rather than an aliased version of its top octave.
+ * The candidate grid is nine samples (0.19 ms) and downstream symbol timing
+ * is estimated independently. Three full-rate scores around the winning grid
+ * point reject sparse aliases and locate the local peak closely enough;
+ * scanning all nineteen neighbouring sample positions used to cost seconds
+ * on the ESP32-S3 without changing any retained verdict. The grid/stride are
+ * tested implementation parameters, not protocol constants.
  */
 static void acquire(const mcl_ap_modem_config_t *config,
                     const int16_t *pcm, size_t sample_count,
                     const mcl_ap_modem_scratch_t *scratch,
                     const float *ref_i, const float *ref_q, size_t ref_len,
-                    size_t *out_index, float *out_correlation)
+                    size_t *out_index, float *out_coarse_correlation,
+                    float *out_correlation, uint8_t *out_refined)
 {
-    const size_t stride = MCL_AP_MODEM_DECIMATION;
+    const size_t tap_stride = MCL_AP_MODEM_COARSE_TAP_STRIDE;
+    const size_t offset_step = MCL_AP_MODEM_COARSE_OFFSET_STEP;
     size_t search = sample_count;
-    size_t coarse_count = ref_len / stride;
+    size_t coarse_count = ref_len / tap_stride;
     float mean_i, mean_q, energy;
     float best = -1.0f;
     size_t best_index = 0u;
     size_t lo, hi;
 
     *out_index = 0u;
+    *out_coarse_correlation = 0.0f;
     *out_correlation = 0.0f;
+    *out_refined = 1u;
 
     if (ref_len == 0u || ref_len > sample_count) {
         return;
@@ -556,22 +618,128 @@ static void acquire(const mcl_ap_modem_config_t *config,
         search = sample_count - ref_len;
     }
 
-    if (coarse_count >= 64u && search >= stride) {
+    if (coarse_count >= 64u && search >= offset_step) {
         float coarse_best;
+        float verified_best;
+        float verify_left;
+        float verify_center;
+        float verify_right;
         size_t coarse_index;
+        size_t verified_index;
+        const size_t verify_radius = 6u;
+        size_t verify_lo;
+        size_t verify_hi;
+        size_t score_index;
 
         mean_i = scratch->cached_coarse_mean_i;
         mean_q = scratch->cached_coarse_mean_q;
         energy = scratch->cached_coarse_energy;
         scan(ref_i, ref_q, mean_i, mean_q, energy,
-             pcm, coarse_count, stride, 0u, search,
+             pcm, coarse_count, tap_stride, offset_step, 0u, search,
              &coarse_index, &coarse_best);
+        *out_coarse_correlation = (coarse_best > 0.0f) ? coarse_best : 0.0f;
 
-        lo = (coarse_index > stride) ? coarse_index - stride : 0u;
-        hi = coarse_index + stride;
-        if (hi > search) {
-            hi = search;
+        /* Even the three-point full-rate check is unnecessary in a quiet poll.
+           This early refusal can only run below both the sparse gate and the
+           final threshold. */
+        if (coarse_best < config->detection_threshold
+                              * MCL_AP_COARSE_GATE_RATIO) {
+            *out_index = coarse_index;
+            *out_correlation = *out_coarse_correlation;
+            return;
         }
+
+        /* A truncated chirp can have a high sparse score: the missing taps
+           are occupied by silence, and the sparse normalization can rank
+           that partial overlap above the eventual full preamble.  Holding
+           such a sidelobe until a maximum body arrives creates a long deaf
+           interval and can step past the real preamble when it is rejected.
+
+           Verify three full-rate positions around the coarse start before
+           declaring it a candidate.  Six-sample spacing puts the selected
+           start within three samples of the local peak while costing three
+           9 600-tap scores, not the former nineteen-position sweep.  On
+           rejection the listener may safely advance to the end of the
+           searched audio, while a credible preamble can be held until its
+           body arrives. */
+        verify_lo = (coarse_index > verify_radius)
+                        ? coarse_index - verify_radius : 0u;
+        verify_hi = coarse_index + verify_radius;
+        if (verify_hi > search) { verify_hi = search; }
+        scan(ref_i, ref_q,
+             scratch->cached_fine_mean_i,
+             scratch->cached_fine_mean_q,
+             scratch->cached_fine_energy,
+             pcm, ref_len, 1u, 1u,
+             coarse_index, coarse_index,
+             &score_index, &verify_center);
+        verified_index = coarse_index;
+        verified_best = verify_center;
+        verify_left = verify_center;
+        verify_right = verify_center;
+        if (verify_lo < coarse_index) {
+            scan(ref_i, ref_q,
+                 scratch->cached_fine_mean_i,
+                 scratch->cached_fine_mean_q,
+                 scratch->cached_fine_energy,
+                 pcm, ref_len, 1u, 1u,
+                 verify_lo, verify_lo, &score_index, &verify_left);
+            if (verify_left > verified_best) {
+                verified_best = verify_left;
+                verified_index = verify_lo;
+            }
+        }
+        if (verify_hi > coarse_index) {
+            scan(ref_i, ref_q,
+                 scratch->cached_fine_mean_i,
+                 scratch->cached_fine_mean_q,
+                 scratch->cached_fine_energy,
+                 pcm, ref_len, 1u, 1u,
+                 verify_hi, verify_hi, &score_index, &verify_right);
+            if (verify_right > verified_best) {
+                verified_best = verify_right;
+                verified_index = verify_hi;
+            }
+        }
+        if (verify_lo + verify_radius == coarse_index &&
+            verify_hi == coarse_index + verify_radius) {
+            const float denominator =
+                verify_left - 2.0f * verify_center + verify_right;
+            if (denominator < -1e-6f) {
+                float delta =
+                    0.5f * (verify_left - verify_right) / denominator;
+                int32_t shift;
+                if (delta < -1.0f) { delta = -1.0f; }
+                if (delta > 1.0f) { delta = 1.0f; }
+                shift = (int32_t)(delta * (float)verify_radius
+                                  + ((delta >= 0.0f) ? 0.5f : -0.5f));
+                verified_index =
+                    (size_t)((int64_t)coarse_index + (int64_t)shift);
+            }
+        }
+        if (verified_best < config->detection_threshold) {
+            *out_index = verified_index;
+            *out_correlation = (verified_best > 0.0f)
+                                   ? verified_best : 0.0f;
+            return;
+        }
+
+        if (config->refinement_guard_samples != 0u &&
+            (verified_index + ref_len > sample_count ||
+             sample_count - (verified_index + ref_len)
+                 < (size_t)config->refinement_guard_samples)) {
+            *out_index = verified_index;
+            *out_correlation = *out_coarse_correlation;
+            *out_refined = 0u;
+            return;
+        }
+
+        /* The interpolated three-point estimate is precise enough for the
+           timing estimator that follows. Reusing it avoids a 19-position
+           full-rate sweep on every real frame. */
+        *out_index = verified_index;
+        *out_correlation = verified_best;
+        return;
     } else {
         lo = 0u;
         hi = search;
@@ -581,17 +749,18 @@ static void acquire(const mcl_ap_modem_config_t *config,
     mean_q = scratch->cached_fine_mean_q;
     energy = scratch->cached_fine_energy;
     scan(ref_i, ref_q, mean_i, mean_q, energy,
-         pcm, ref_len, 1u, lo, hi, &best_index, &best);
+         pcm, ref_len, 1u, 1u, lo, hi, &best_index, &best);
 
     *out_index = best_index;
     *out_correlation = (best > 0.0f) ? best : 0.0f;
+    if (*out_coarse_correlation == 0.0f) {
+        *out_coarse_correlation = *out_correlation;
+    }
 }
 
 /* Goertzel power at one frequency over one symbol window. */
-static float goertzel(const int16_t *pcm, size_t n, float frequency)
+static float goertzel_coeff(const int16_t *pcm, size_t n, float coeff)
 {
-    float w = TWO_PI * frequency / (float)MCL_AP_MODEM_SAMPLE_RATE_HZ;
-    float coeff = 2.0f * cosf(w);
     float s1 = 0.0f;
     float s2 = 0.0f;
     size_t i;
@@ -616,13 +785,32 @@ static size_t window_index(float t)
     return (size_t)floorf(t + 0.5f);
 }
 
+static float tone_coefficient(float frequency)
+{
+    const float w = TWO_PI * frequency
+                    / (float)MCL_AP_MODEM_SAMPLE_RATE_HZ;
+    return 2.0f * cosf(w);
+}
+
+static float log_ratio_coeff(const int16_t *pcm, size_t start, size_t len,
+                             float coeff0, float coeff1)
+{
+    float p0 = goertzel_coeff(pcm + start, len, coeff0);
+    float p1 = goertzel_coeff(pcm + start, len, coeff1);
+    return logf(p1 + 1e-30f) - logf(p0 + 1e-30f);
+}
+
+#if defined(MCL_AP_MODEM_DIAGNOSTICS)
+/* Diagnostic-instrument entry point used by Experiments 010 and 011. The
+   production loops call log_ratio_coeff() so the invariant cosine work is
+   paid once per decode, not once per symbol. */
 static float log_ratio(const int16_t *pcm, size_t start, size_t len,
                        float f0, float f1)
 {
-    float p0 = goertzel(pcm + start, len, f0);
-    float p1 = goertzel(pcm + start, len, f1);
-    return logf(p1 + 1e-30f) - logf(p0 + 1e-30f);
+    return log_ratio_coeff(pcm, start, len,
+                           tone_coefficient(f0), tone_coefficient(f1));
 }
+#endif
 
 /*
  * Symbol timing and channel bias, both estimated from the training sequence.
@@ -651,6 +839,8 @@ static void estimate_timing(const int16_t *pcm, size_t n,
     float best_score = -1e30f;
     int32_t best_phase = 0;
     float best_sps = nominal;
+    const float coeff0 = tone_coefficient(f0);
+    const float coeff1 = tone_coefficient(f1);
     int32_t phase;
     float sps;
     size_t b;
@@ -675,7 +865,8 @@ static void estimate_timing(const int16_t *pcm, size_t n,
                     continue;
                 }
                 {
-                    float ratio = log_ratio(pcm, start, len, f0, f1);
+                    float ratio = log_ratio_coeff(pcm, start, len,
+                                                  coeff0, coeff1);
                     score += ((b & 1u) == 0u) ? -ratio : ratio;
                 }
             }
@@ -705,7 +896,7 @@ static void estimate_timing(const int16_t *pcm, size_t n,
             if (t0 < 0.0f || start + len > n) {
                 continue;
             }
-            ratio = log_ratio(pcm, start, len, f0, f1);
+            ratio = log_ratio_coeff(pcm, start, len, coeff0, coeff1);
             if ((b & 1u) == 0u) {
                 sum0 += ratio;
                 if (ratio > worst0) { worst0 = ratio; }
@@ -778,6 +969,8 @@ static mcl_ap_modem_status_t demod_at(
     size_t available_bits, bytes, bit;
     uint8_t declared;
     uint16_t received, computed;
+    const float coeff0 = tone_coefficient(config->fsk_freq_0_hz);
+    const float coeff1 = tone_coefficient(config->fsk_freq_1_hz);
 
     if (payload_start < 0.0f || window_index(payload_start) >= fsk_len) {
         return MCL_AP_MODEM_ERR_SYNC;
@@ -802,8 +995,7 @@ static mcl_ap_modem_status_t demod_at(
         if (start + len > fsk_len) {
             break;
         }
-        if (log_ratio(fsk, start, len,
-                      config->fsk_freq_0_hz, config->fsk_freq_1_hz) > bias) {
+        if (log_ratio_coeff(fsk, start, len, coeff0, coeff1) > bias) {
             scratch->demod[bit / 8u] |=
                 (uint8_t)(1u << (7u - (unsigned)(bit % 8u)));
         }
@@ -843,9 +1035,9 @@ static mcl_ap_modem_status_t demod_at(
  * energies separate cleanly, so the mean margin is maximal; at a wrong rate the
  * later symbols straddle boundaries, both tones leak, and the mean falls.
  */
-static float mean_margin(const mcl_ap_modem_config_t *config,
-                         const int16_t *fsk, size_t fsk_len,
-                         float start_t, float sps, float bias, size_t bits)
+static float mean_margin(const int16_t *fsk, size_t fsk_len,
+                         float start_t, float sps, float bias, size_t bits,
+                         float coeff0, float coeff1)
 {
     double total = 0.0;
     size_t counted = 0u, bit;
@@ -859,8 +1051,7 @@ static float mean_margin(const mcl_ap_modem_config_t *config,
         if (t0 < 0.0f || start + len > fsk_len) {
             break;
         }
-        soft = log_ratio(fsk, start, len,
-                         config->fsk_freq_0_hz, config->fsk_freq_1_hz) - bias;
+        soft = log_ratio_coeff(fsk, start, len, coeff0, coeff1) - bias;
         total += (soft < 0.0f) ? -(double)soft : (double)soft;
         counted++;
     }
@@ -881,7 +1072,9 @@ mcl_ap_modem_status_t mcl_ap_modem_decode(
 {
     size_t ref_len;
     size_t index = 0u;
+    float coarse_correlation = 0.0f;
     float correlation = 0.0f;
+    uint8_t refined = 1u;
     size_t fsk_start;
     const int16_t *fsk;
     size_t fsk_len;
@@ -904,9 +1097,14 @@ mcl_ap_modem_status_t mcl_ap_modem_decode(
 
     acquire(config, pcm, sample_count, scratch,
             scratch->ref_i, scratch->ref_q, ref_len,
-            &index, &correlation);
+            &index, &coarse_correlation, &correlation, &refined);
     info->acquisition_index = index;
+    info->coarse_correlation = coarse_correlation;
     info->correlation = correlation;
+    if (refined == 0u) {
+        info->refinement_deferred = 1u;
+        return MCL_AP_MODEM_ERR_INCOMPLETE;
+    }
     info->acquired = (correlation >= config->detection_threshold) ? 1u : 0u;
     if (info->acquired == 0u) {
         return MCL_AP_MODEM_ERR_NOT_ACQUIRED;
@@ -974,6 +1172,12 @@ mcl_ap_modem_status_t mcl_ap_modem_decode(
         float best_score = -1e30f;
         float candidate;
         size_t score_bits;
+        const float coeff0 = tone_coefficient(config->fsk_freq_0_hz);
+        const float coeff1 = tone_coefficient(config->fsk_freq_1_hz);
+        int candidate_index;
+        int coarse_best_index = 0;
+        int fine_first;
+        int fine_last;
 
         /*
          * How many symbols to score over. The declared length is not
@@ -990,16 +1194,50 @@ mcl_ap_modem_status_t mcl_ap_modem_decode(
                           + (size_t)info->payload_bytes) * 8u;
         }
 
+        /* The whole-frame margin is locally smooth in symbol rate. Search the
+           original 0.01 grid in two stages: every tenth point first, then the
+           21 points within +/-0.10 sample/symbol of the winner. This retains
+           the original candidate values and resolution while reducing the
+           expensive full-frame scores from about 121 to at most 34. */
+        candidate_index = 0;
         for (candidate = nominal - 0.6f;
              candidate <= nominal + 0.6f;
-             candidate += 0.01f) {
-            float start_c = (float)phase
-                            + (float)config->training_bits * candidate;
-            float score = mean_margin(config, fsk, fsk_len, start_c, candidate,
-                                      bias, score_bits);
-            if (score > best_score) {
-                best_score = score;
-                best_sps = candidate;
+             candidate += 0.01f, ++candidate_index) {
+            if (candidate_index % 10 == 0) {
+                const float start_c =
+                    (float)phase
+                    + (float)config->training_bits * candidate;
+                const float score =
+                    mean_margin(fsk, fsk_len, start_c, candidate,
+                                bias, score_bits, coeff0, coeff1);
+                if (score > best_score) {
+                    best_score = score;
+                    best_sps = candidate;
+                    coarse_best_index = candidate_index;
+                }
+            }
+        }
+
+        fine_first = coarse_best_index - 10;
+        if (fine_first < 0) { fine_first = 0; }
+        fine_last = coarse_best_index + 10;
+        if (fine_last > 120) { fine_last = 120; }
+        candidate_index = 0;
+        for (candidate = nominal - 0.6f;
+             candidate <= nominal + 0.6f;
+             candidate += 0.01f, ++candidate_index) {
+            if (candidate_index >= fine_first &&
+                candidate_index <= fine_last) {
+                const float start_c =
+                    (float)phase
+                    + (float)config->training_bits * candidate;
+                const float score =
+                    mean_margin(fsk, fsk_len, start_c, candidate,
+                                bias, score_bits, coeff0, coeff1);
+                if (score > best_score) {
+                    best_score = score;
+                    best_sps = candidate;
+                }
             }
         }
 

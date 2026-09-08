@@ -171,6 +171,38 @@ static void test_round_trip_clean(void)
     check(memcmp(received, payload, len) == 0, "payload bytes are identical");
 }
 
+static void test_prepare_and_union_arena_invalidation(void)
+{
+    uint8_t payload[MCL_WIRE_TIER0_MAX_SIZE];
+    uint8_t received[MCL_AP_MODEM_MAX_PAYLOAD_BYTES];
+    mcl_ap_modem_rx_t info;
+    mcl_ap_modem_config_t config;
+    size_t len, samples;
+
+    printf("[modem] prepared reference after scratch storage was reused\n");
+    len = build_presence(payload, sizeof(payload));
+    samples = transmit(payload, len);
+    mcl_ap_modem_default_config(&config);
+
+    check(mcl_ap_modem_prepare(&config, &g_scratch) == MCL_AP_MODEM_OK,
+          "the receive reference can be prepared before capture");
+
+    /* A union arena may overwrite the reference while leaving the cache
+       bookkeeping at the far end of the scratch untouched. This is the exact
+       layout used by the embedded node's larger transmit waveform. */
+    memset(g_scratch.ref_i, 0, sizeof(g_scratch.ref_i));
+    memset(g_scratch.ref_q, 0, sizeof(g_scratch.ref_q));
+    mcl_ap_modem_scratch_invalidate(&g_scratch);
+
+    check(mcl_ap_modem_prepare(&config, &g_scratch) == MCL_AP_MODEM_OK,
+          "an invalidated reused arena regenerates the reference");
+    check(receive(g_tx, samples, received, sizeof(received), &info)
+              == MCL_AP_MODEM_OK,
+          "the regenerated reference decodes cleanly");
+    check(memcmp(received, payload, len) == 0,
+          "regeneration preserves the payload bytes");
+}
+
 static void test_arbitrary_lead_in(void)
 {
     uint8_t payload[MCL_WIRE_TIER0_MAX_SIZE];
@@ -194,6 +226,28 @@ static void test_arbitrary_lead_in(void)
           info.acquisition_index <= lead + 4808u,
           "and acquires within the leading silence, not at zero");
     check(memcmp(received, payload, len) == 0, "identical bytes");
+}
+
+static void test_acquisition_stride_alignments(void)
+{
+    uint8_t payload[MCL_WIRE_TIER0_MAX_SIZE];
+    uint8_t received[MCL_AP_MODEM_MAX_PAYLOAD_BYTES];
+    mcl_ap_modem_rx_t info;
+    size_t len, samples, shift;
+
+    printf("[modem] every acquisition-stride alignment\n");
+    len = build_presence(payload, sizeof(payload));
+    samples = transmit(payload, len);
+
+    for (shift = 0u; shift < MCL_AP_MODEM_COARSE_OFFSET_STEP; ++shift) {
+        memset(g_rx, 0, shift * sizeof(int16_t));
+        memcpy(g_rx + shift, g_tx, samples * sizeof(int16_t));
+        check(receive(g_rx, shift + samples, received, sizeof(received), &info)
+                  == MCL_AP_MODEM_OK,
+              "decodes at every position within one coarse stride");
+        check(memcmp(received, payload, len) == 0,
+              "identical bytes at every coarse-stride position");
+    }
 }
 
 static void test_dc_bias_and_inversion(void)
@@ -465,7 +519,9 @@ int main(int argc, char **argv)
     printf("EXPERIMENTAL. Not AP-B0, not a selected profile.\n\n");
 
     test_round_trip_clean();
+    test_prepare_and_union_arena_invalidation();
     test_arbitrary_lead_in();
+    test_acquisition_stride_alignments();
     test_dc_bias_and_inversion();
     test_noise();
     test_band_tilt();

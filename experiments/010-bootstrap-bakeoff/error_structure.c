@@ -32,6 +32,7 @@
  *   00 02 00 00 00 01 01 00 00 01 3C
  */
 
+#define MCL_AP_MODEM_DIAGNOSTICS 1
 #include "../../src/ap_modem.c"
 #include "../../tools/wav_io.h"
 
@@ -125,7 +126,9 @@ static int analyse(const char *path)
     size_t sample_count = 0u, ref_len, index = 0u, fsk_start, fsk_len;
     size_t exp_bytes, exp_bits, bit, run = 0u;
     const int16_t *fsk;
-    float correlation = 0.0f, sps = 0.0f, bias = 0.0f, payload_start;
+    float coarse_correlation = 0.0f, correlation = 0.0f;
+    float sps = 0.0f, bias = 0.0f, payload_start;
+    uint8_t refined = 0u;
     int32_t phase = 0;
     unsigned long errs = 0u;
     int rc;
@@ -153,7 +156,7 @@ static int analyse(const char *path)
 
     acquire(&config, g_pcm, sample_count, &scratch,
             scratch.ref_i, scratch.ref_q, ref_len,
-            &index, &correlation);
+            &index, &coarse_correlation, &correlation, &refined);
     if (correlation < config.detection_threshold) {
         printf("%-58s  NOT_ACQUIRED  corr=%.3f\n", path, (double)correlation);
         return 0;

@@ -29,6 +29,7 @@
  * Usage: timing_tolerance
  */
 
+#define MCL_AP_MODEM_DIAGNOSTICS 1
 #include "../../src/ap_modem.c"
 
 #include "mcl/wire.h"
@@ -126,7 +127,8 @@ static int survives(const uint8_t *payload, size_t len, float sps_error)
     mcl_ap_modem_config_t config;
     size_t written = 0u, ref_len, index = 0u, fsk_start, fsk_len, bit, exp_bits;
     const int16_t *fsk;
-    float correlation = 0.0f, sps = 0.0f, bias = 0.0f, payload_start;
+    float coarse = 0.0f, correlation = 0.0f, sps = 0.0f, bias = 0.0f, payload_start;
+    uint8_t refined = 0u;
     int32_t phase = 0;
     uint16_t crc;
 
@@ -141,7 +143,7 @@ static int survives(const uint8_t *payload, size_t len, float sps_error)
        scratch, and those are filled in where the reference is built. */
     ref_len = preamble_iq_cached(&config, &scratch);
     acquire(&config, g_pcm, written, &scratch, scratch.ref_i, scratch.ref_q,
-            ref_len, &index, &correlation);
+            ref_len, &index, &coarse, &correlation, &refined);
     if (correlation < config.detection_threshold) {
         return -1;
     }

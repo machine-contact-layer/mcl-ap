@@ -49,6 +49,7 @@
  *   4 not acquired
  */
 
+#define MCL_AP_MODEM_DIAGNOSTICS 1
 #include "../../src/ap_modem.c"
 #include "../../tools/wav_io.h"
 
@@ -362,7 +363,8 @@ static int do_decode(cell_t cell, const char *path)
     size_t count = 0u, expect_len, ref_len, index = 0u;
     size_t fsk_start, fsk_len, frame_bits;
     const int16_t *fsk;
-    float correlation = 0.0f, sps0 = 0.0f, bias = 0.0f;
+    float coarse = 0.0f, correlation = 0.0f, sps0 = 0.0f, bias = 0.0f;
+    uint8_t refined = 0u;
     float best_sps, best_score, cand, start_best;
     int32_t phase = 0;
     int stock_ok = 0, ref_ok = 0, stock_obj = 0, ref_obj = 0;
@@ -390,7 +392,7 @@ static int do_decode(cell_t cell, const char *path)
        scratch, and those are filled in where the reference is built. */
     ref_len = preamble_iq_cached(&cfg, &scratch);
     acquire(&cfg, g_pcm, count, &scratch, scratch.ref_i, scratch.ref_q, ref_len,
-            &index, &correlation);
+            &index, &coarse, &correlation, &refined);
     if (correlation < cfg.detection_threshold) {
         printf("%-34s acquired=0 corr=%.3f  stock=--  refined=--\n",
                path, (double)correlation);
@@ -513,11 +515,12 @@ static int do_inspect(const char *path)
         shown = available;
     }
 
-    printf("status=%d acquired=%u index=%u corr=%.6f phase=%ld sps=%.6f "
+    printf("status=%d acquired=%u index=%u coarse=%.6f corr=%.6f phase=%ld sps=%.6f "
            "declared=%u received_crc=%04X computed_crc=%04X crc_valid=%u "
            "demod=",
            (int)st, (unsigned)info.acquired, (unsigned)info.acquisition_index,
-           (double)info.correlation, (long)info.timing_phase,
+           (double)info.coarse_correlation, (double)info.correlation,
+           (long)info.timing_phase,
            (double)info.samples_per_symbol, (unsigned)info.payload_bytes,
            (unsigned)info.received_crc, (unsigned)info.computed_crc,
            (unsigned)info.crc_valid);

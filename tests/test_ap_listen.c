@@ -59,6 +59,20 @@ static const uint8_t g_payload_b[6] = {
     0xDEu, 0xADu, 0xBEu, 0xEFu, 0x00u, 0xFFu
 };
 
+/* Exact major-1 bootstrap objects from the conformance vectors. */
+static const uint8_t g_presence[10] = {
+    0x10u, 0x02u, 0x0Au, 0x11u, 0xEDu, 0xC0u, 0x00u, 0x00u, 0x04u, 0x3Cu
+};
+static const uint8_t g_accept[16] = {
+    0x18u, 0x0Au, 0x0Au, 0x11u, 0xEDu, 0xC0u, 0x00u, 0xC0u,
+    0xFFu, 0xEEu, 0x03u, 0x01u, 0x0Du, 0x0Cu, 0x0Du, 0xE5u
+};
+static const uint8_t g_offer[17] = {
+    0x18u, 0x02u, 0x0Au, 0x11u, 0xEDu, 0xC0u, 0x00u, 0xC0u,
+    0xFFu, 0xEEu, 0x03u, 0x01u, 0x5Eu, 0x1Eu, 0xC7u, 0xEDu,
+    0x3Cu
+};
+
 static void listen_config(mcl_ap_listen_config_t *cfg, uint8_t max_payload)
 {
     mcl_ap_listen_default_config(cfg);
@@ -337,6 +351,67 @@ static void test_two_frames(void)
     check(second > first, "and in the order they transmitted");
 }
 
+/* The shortest useful positive-traffic stress for AP-BOOTSTRAP: canonical
+   PRESENCE, ACCEPT and OFFER waveforms, with no scheduler-added gap between
+   their encoded extents. A successful expensive decode must not make the
+   listener lose the next legal object. */
+static void test_bootstrap_sequence_without_deaf_window(void)
+{
+    static const uint8_t *objects[] = {g_presence, g_accept, g_offer};
+    static const size_t sizes[] = {
+        sizeof(g_presence), sizeof(g_accept), sizeof(g_offer)
+    };
+    mcl_ap_listen_config_t cfg;
+    mcl_ap_listener_t listener;
+    mcl_ap_listen_event_t event;
+    uint8_t payload[MCL_AP_MODEM_MAX_PAYLOAD_BYTES];
+    const size_t start = 24000u;
+    size_t i, next = start;
+    int contacts = 0;
+    int waited = 0;
+
+    printf("canonical PRESENCE / ACCEPT / OFFER without a deaf window\n");
+    memset(g_stream, 0, sizeof(g_stream));
+    for (i = 0u; i < 3u; ++i) {
+        next = place_frame(g_stream, STREAM_CAPACITY, next,
+                           objects[i], sizes[i]);
+    }
+    check(next > start, "all three canonical objects were generated");
+
+    listen_config(&cfg, 17u);
+    (void)mcl_ap_listen_init(&listener, &cfg, g_window, WINDOW_CAPACITY);
+
+    for (i = 0u; i < next + 24000u; i += 512u) {
+        const size_t n = (next + 24000u - i < 512u)
+                             ? next + 24000u - i : 512u;
+        mcl_ap_listen_result_t r;
+        (void)mcl_ap_listen_push(&listener, g_stream + i, n);
+        do {
+            r = mcl_ap_listen_poll(&listener, &g_scratch,
+                                   payload, sizeof(payload), &event);
+            if (r == MCL_AP_LISTEN_WAITING) {
+                waited++;
+            } else if (r == MCL_AP_LISTEN_CONTACT) {
+                check(contacts < 3, "no extra contact was manufactured");
+                if (contacts < 3) {
+                    check(event.payload_bytes == sizes[contacts],
+                          "bootstrap object length is in sequence");
+                    check(memcmp(payload, objects[contacts], sizes[contacts]) == 0,
+                          "bootstrap object bytes are in sequence");
+                }
+                contacts++;
+            }
+        } while (r == MCL_AP_LISTEN_CONTACT);
+    }
+
+    check(waited > 0, "at least one positive candidate waited for its body");
+    check(contacts == 3, "all three adjacent bootstrap objects were recovered");
+    check(listener.samples_unscanned == 0u,
+          "positive processing left no legal audio unsearched");
+    check(listener.overruns == 0u,
+          "positive processing caused no listener overrun");
+}
+
 /* Silence is silence. A detector that fires on nothing is worse than none. */
 static void test_quiet_room(void)
 {
@@ -548,6 +623,7 @@ int main(int argc, char **argv)
     test_polling_does_not_cost();
     test_body_still_arriving();
     test_two_frames();
+    test_bootstrap_sequence_without_deaf_window();
     test_quiet_room();
     test_too_busy_is_visible();
     test_archived_captures(root);

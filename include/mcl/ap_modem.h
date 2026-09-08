@@ -22,9 +22,9 @@
  *   - every buffer is caller-owned; there is no malloc and no large stack
  *     array, so the working set is visible in the type system
  *   - the sample path is float, which the target has hardware for
- *   - acquisition searches at a stride first and refines at full rate, which
- *     is what makes it finish in a fraction of a second instead of tens of
- *     seconds, and which needs no decimated copy of the signal
+ *   - acquisition uses a sparse coarse pass, rejects weak candidates before
+ *     refinement, and verifies credible candidates at three full-rate points;
+ *     a continuous listener defers body decoding until the frame can exist
  *   - samples are int16 at the boundaries, because that is what an I2S
  *     peripheral and a WAV file both actually carry
  *
@@ -66,12 +66,26 @@ extern "C" {
 #define MCL_AP_MODEM_MAX_PREAMBLE_SAMPLES 9600u
 
 /*
- * Acquisition decimation. 3 keeps the Nyquist limit at 8 kHz, above the
- * 6 kHz top of the chirp, so the coarse search sees the whole preamble
- * rather than an aliased version of it. 4 would put Nyquist exactly at
- * 6 kHz, which is the wrong side of a boundary to sit on.
+ * Acquisition sampling. The coarse pass deliberately reads every 18th sample
+ * of both the stored reference and input and tests a candidate every ninth
+ * input sample. The full-rate pass then checks the winning point and its two
+ * neighbours before sub-sample peak interpolation. This is a candidate
+ * detector, not signal
+ * reconstruction, so its sparse samples do not set the modem's signal
+ * bandwidth or its final correlation value.
+ *
+ * Both values are evidence-bounded: all nine candidate-grid alignments are
+ * exercised by the host test, and the retained conformance, DFR1154 and
+ * Android-speaker corpus gives the same accept/refuse result as the original
+ * stride-three search. Keep them overrideable so a new target or waveform can
+ * test a different tradeoff.
  */
-#define MCL_AP_MODEM_DECIMATION 3u
+#ifndef MCL_AP_MODEM_COARSE_TAP_STRIDE
+#define MCL_AP_MODEM_COARSE_TAP_STRIDE 18u
+#endif
+#ifndef MCL_AP_MODEM_COARSE_OFFSET_STEP
+#define MCL_AP_MODEM_COARSE_OFFSET_STEP 9u
+#endif
 
 /* A bound a constrained receiver can put on acquisition work: 2.0 s at
    48 kHz. It is NOT a default -- see `max_search_samples` in the config. */
@@ -87,7 +101,8 @@ enum {
     MCL_AP_MODEM_ERR_NOT_ACQUIRED = 3,
     MCL_AP_MODEM_ERR_SYNC = 4,
     MCL_AP_MODEM_ERR_CRC = 5,
-    MCL_AP_MODEM_ERR_PAYLOAD = 6
+    MCL_AP_MODEM_ERR_PAYLOAD = 6,
+    MCL_AP_MODEM_ERR_INCOMPLETE = 7
 };
 
 /* --------------------------------------------------------------- config */
@@ -121,6 +136,10 @@ typedef struct {
      * decision about a specific rig, so it is made where the rig is known.
      */
     uint32_t max_search_samples;
+    /* If non-zero, a sparse candidate is reported as INCOMPLETE until this
+       many samples exist after its preamble. Continuous listeners use it to
+       keep capturing the body before paying full refinement/demodulation. */
+    uint32_t refinement_guard_samples;
 } mcl_ap_modem_config_t;
 
 /*
@@ -181,7 +200,7 @@ typedef struct {
     /*
      * The reference's own statistics, which the acquisition pass needs and
      * which are a pure function of the reference above. Two sets: the coarse
-     * pass reads the reference at MCL_AP_MODEM_DECIMATION stride, the fine
+     * pass reads the reference at MCL_AP_MODEM_COARSE_TAP_STRIDE, the fine
      * pass reads all of it, and the mean and energy differ accordingly.
      */
     float    cached_coarse_mean_i;
@@ -191,6 +210,25 @@ typedef struct {
     float    cached_fine_mean_q;
     float    cached_fine_energy;
 } mcl_ap_modem_scratch_t;
+
+/*
+ * Build and cache the receive reference before audio acquisition begins.
+ * A continuous receiver should do this outside its listening interval; the
+ * first decode would otherwise pay the same deterministic setup cost while
+ * its microphone DMA queue is filling. Repeated calls with an unchanged
+ * config are cheap.
+ */
+mcl_ap_modem_status_t mcl_ap_modem_prepare(
+    const mcl_ap_modem_config_t *config,
+    mcl_ap_modem_scratch_t *scratch);
+
+/*
+ * Invalidate only the derived-reference cache. Call this if storage occupied
+ * by `scratch` was deliberately reused (for example by a union arena holding
+ * a transmit waveform). The next prepare/decode regenerates every derived
+ * value; callers do not need to clear the full 77 KB working set.
+ */
+void mcl_ap_modem_scratch_invalidate(mcl_ap_modem_scratch_t *scratch);
 
 /* --------------------------------------------------------------- encode */
 
@@ -220,6 +258,7 @@ mcl_ap_modem_status_t mcl_ap_modem_encode(
 
 typedef struct {
     size_t   acquisition_index;      /* where the preamble was found */
+    float    coarse_correlation;     /* sparse score before refinement */
     float    correlation;            /* normalized magnitude, 0..1 */
     float    samples_per_symbol;     /* after the timing search */
     int32_t  timing_phase;           /* samples, relative to preamble end */
@@ -228,6 +267,7 @@ typedef struct {
     size_t   payload_bytes;
     uint8_t  acquired;
     uint8_t  crc_valid;
+    uint8_t  refinement_deferred;
 } mcl_ap_modem_rx_t;
 
 /*

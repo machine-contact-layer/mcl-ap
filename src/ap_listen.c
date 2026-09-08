@@ -235,6 +235,7 @@ static mcl_ap_listen_result_t poll_impl(mcl_ap_listener_t *listener,
     mcl_ap_modem_status_t status;
     uint64_t slice_start, stream_end, acquired_at;
     size_t offset, available;
+    uint8_t was_pending;
 
     if (listener == NULL || listener->window == NULL || scratch == NULL ||
         out_payload == NULL || out_capacity == 0u) {
@@ -246,6 +247,7 @@ static mcl_ap_listen_result_t poll_impl(mcl_ap_listener_t *listener,
 
     config = listener->config.modem;
     stream_end = listener->window_start + (uint64_t)listener->filled;
+    was_pending = listener->pending;
 
     /*
      * A held preamble is re-judged from exactly where it was found: the slice
@@ -260,9 +262,16 @@ static mcl_ap_listen_result_t poll_impl(mcl_ap_listener_t *listener,
      */
     if (listener->pending != 0u) {
         slice_start = listener->pending_at;
-        config.max_search_samples = 1u;
+        config.max_search_samples =
+            2u * (uint32_t)MCL_AP_MODEM_COARSE_OFFSET_STEP + 1u;
+        config.refinement_guard_samples = 0u;
     } else {
         slice_start = listener->scan_pos;
+        if (final == 0u && listener->frame_span_max > listener->ref_len) {
+            config.refinement_guard_samples =
+                (uint32_t)(listener->frame_span_max - listener->ref_len
+                           + MCL_AP_MODEM_COARSE_OFFSET_STEP);
+        }
     }
 
     if (slice_start >= stream_end || slice_start < listener->window_start) {
@@ -271,14 +280,28 @@ static mcl_ap_listen_result_t poll_impl(mcl_ap_listener_t *listener,
     offset = (size_t)(slice_start - listener->window_start);
     available = listener->filled - offset;
 
+    /* A sparse candidate is held one grid step before its approximate start.
+       Do not invoke the expensive fine/timing path until a maximum frame can
+       be wholly present. Capture remains live while these samples arrive. */
+    if (listener->pending != 0u && final == 0u &&
+        available < listener->frame_span_max
+                        + 2u * MCL_AP_MODEM_COARSE_OFFSET_STEP) {
+        if (event != NULL) {
+            event->stream_index = listener->pending_at;
+            event->modem_status = MCL_AP_MODEM_ERR_INCOMPLETE;
+        }
+        return MCL_AP_LISTEN_WAITING;
+    }
+
     /* Below one reference length the correlator has nothing to slide. */
     if (available <= listener->ref_len) {
         return MCL_AP_LISTEN_QUIET;
     }
 
     listener->samples_searched +=
-        (listener->pending != 0u) ? 1u
-                                  : (uint64_t)(available - listener->ref_len);
+        (listener->pending != 0u)
+            ? (uint64_t)(2u * MCL_AP_MODEM_COARSE_OFFSET_STEP + 1u)
+            : (uint64_t)(available - listener->ref_len);
 
     status = mcl_ap_modem_decode(&config,
                                  listener->window + offset, available,
@@ -289,6 +312,17 @@ static mcl_ap_listen_result_t poll_impl(mcl_ap_listener_t *listener,
         event->stream_index = acquired_at;
         event->rx = rx;
         event->modem_status = status;
+    }
+
+    if (rx.refinement_deferred != 0u) {
+        const uint64_t approximate = acquired_at;
+        const uint64_t step = (uint64_t)MCL_AP_MODEM_COARSE_OFFSET_STEP;
+        listener->pending_at = (approximate > slice_start + step)
+                                   ? approximate - step
+                                   : slice_start;
+        listener->scan_pos = listener->pending_at;
+        listener->pending = 1u;
+        return MCL_AP_LISTEN_WAITING;
     }
 
     if (rx.acquired == 0u) {
@@ -303,6 +337,16 @@ static mcl_ap_listen_result_t poll_impl(mcl_ap_listener_t *listener,
          * than hold a position that will never resolve.
          */
         listener->pending = 0u;
+        if (was_pending != 0u) {
+            /* The sparse pass may see a partial-preamble sidelobe before the
+               actual chirp has fully arrived.  Rejecting that held candidate
+               proves only that start position false; it does not prove the
+               rest of the buffered audio quiet.  Resume one coarse grid step
+               later so the real preamble remains searchable. */
+            listener->scan_pos =
+                slice_start + (uint64_t)MCL_AP_MODEM_COARSE_OFFSET_STEP;
+            return MCL_AP_LISTEN_QUIET;
+        }
         listener->scan_pos = stream_end - (uint64_t)listener->ref_len;
         if (listener->scan_pos < slice_start) {
             listener->scan_pos = slice_start;

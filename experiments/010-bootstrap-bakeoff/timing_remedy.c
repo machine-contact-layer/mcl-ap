@@ -30,6 +30,7 @@
  * Usage: timing_remedy --payload <hex> <capture.wav>...
  */
 
+#define MCL_AP_MODEM_DIAGNOSTICS 1
 #include "../../src/ap_modem.c"
 #include "../../tools/wav_io.h"
 
@@ -132,7 +133,8 @@ static void analyse(const char *path)
     mcl_ap_modem_config_t cfg;
     size_t count = 0u, ref_len, index = 0u, fsk_start, fsk_len, frame_bits;
     const int16_t *fsk;
-    float correlation = 0.0f, sps0 = 0.0f, bias = 0.0f, start0;
+    float coarse = 0.0f, correlation = 0.0f, sps0 = 0.0f, bias = 0.0f, start0;
+    uint8_t refined = 0u;
     float best_sps, best_score, cand, start_c;
     int32_t phase = 0;
     double e0, e1;
@@ -145,7 +147,7 @@ static void analyse(const char *path)
        scratch, and those are filled in where the reference is built. */
     ref_len = preamble_iq_cached(&cfg, &scratch);
     acquire(&cfg, g_pcm, count, &scratch, scratch.ref_i, scratch.ref_q, ref_len,
-            &index, &correlation);
+            &index, &coarse, &correlation, &refined);
     if (correlation < cfg.detection_threshold) {
         printf("%-46s NOT_ACQUIRED\n", path);
         return;
