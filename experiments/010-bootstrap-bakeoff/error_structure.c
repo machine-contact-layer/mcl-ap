@@ -141,10 +141,18 @@ static int analyse(const char *path)
     }
     g_caps_total++;
 
-    ref_len = generate_preamble_iq(&config, scratch.ref_i, scratch.ref_q);
+    /*
+     * Through the cache, not generate_preamble_iq directly: acquire() now
+     * reads the reference statistics from the scratch, and those are filled in
+     * where the reference is built. Calling the generator on its own would
+     * leave them stale -- or, on a scratch this function has just zeroed,
+     * empty -- and the correlation would be computed against the wrong mean.
+     */
+    ref_len = preamble_iq_cached(&config, &scratch);
     if (ref_len == 0u || ref_len > sample_count) return -1;
 
-    acquire(&config, g_pcm, sample_count, scratch.ref_i, scratch.ref_q, ref_len,
+    acquire(&config, g_pcm, sample_count, &scratch,
+            scratch.ref_i, scratch.ref_q, ref_len,
             &index, &correlation);
     if (correlation < config.detection_threshold) {
         printf("%-58s  NOT_ACQUIRED  corr=%.3f\n", path, (double)correlation);
@@ -211,8 +219,11 @@ static int analyse(const char *path)
 
     if (g_sweep) {
         float try_sps, best_sps = sps;
+        float ratios[MAX_BITS];
         int32_t try_phase, best_phase = phase;
         unsigned long best = (unsigned long)-1;
+        unsigned long best_with_bias = (unsigned long)-1;
+        float best_bias = bias;
 
         for (try_phase = -80; try_phase <= 80; ++try_phase) {
             for (try_sps = 159.0f; try_sps <= 161.0f; try_sps += 0.005f) {
@@ -236,6 +247,48 @@ static int analyse(const char *path)
         printf("   | best=%lu at sps=%.3f phase=%+3d  drift=%.1f samples",
                best, (double)best_sps, (int)best_phase,
                (double)((best_sps - sps) * (float)exp_bits));
+
+        /*
+         * One further oracle question, still deliberately unavailable to a
+         * receiver: at the timing that minimised errors above, could a single
+         * different decision threshold separate the transmitted classes?
+         * This distinguishes a timing failure from a threshold failure on a
+         * retained capture.  Candidate thresholds only need to sit at one of
+         * the observed ratios because decisions change nowhere in between.
+         */
+        {
+            float pstart = (float)best_phase
+                           + (float)config.training_bits * best_sps;
+            size_t ratio_count = 0u;
+            size_t candidate;
+
+            for (bit = 0u; bit < exp_bits && bit < MAX_BITS; ++bit) {
+                float t0b = pstart + (float)bit * best_sps;
+                size_t st = window_index(t0b);
+                size_t ln = window_index(best_sps);
+                if (t0b < 0.0f || st + ln > fsk_len) break;
+                ratios[ratio_count++] = log_ratio(
+                    fsk, st, ln, config.fsk_freq_0_hz,
+                    config.fsk_freq_1_hz);
+            }
+
+            for (candidate = 0u; candidate < ratio_count; ++candidate) {
+                unsigned long e = 0u;
+                float threshold = ratios[candidate];
+                for (bit = 0u; bit < ratio_count; ++bit) {
+                    unsigned got2 = (ratios[bit] > threshold) ? 1u : 0u;
+                    unsigned want2 = (unsigned)((expected[bit / 8u]
+                                      >> (7u - (bit % 8u))) & 1u);
+                    if (got2 != want2) e++;
+                }
+                if (e < best_with_bias) {
+                    best_with_bias = e;
+                    best_bias = threshold;
+                }
+            }
+        }
+        printf("  best+bias=%lu at bias=%.3f (training %.3f)",
+               best_with_bias, (double)best_bias, (double)bias);
         if (best < errs) g_sweep_recovered += (errs - best);
     }
     printf("\n");

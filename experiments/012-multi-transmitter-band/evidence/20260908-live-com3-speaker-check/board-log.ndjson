@@ -1,0 +1,14 @@
+{"at_ms":3015,"text":"armed run resumed after restart, wifi never started"}
+{"at_ms":3015,"text":"run start scenario=1 duration=20000 quiesce=0 free_heap=87492"}
+{"at_ms":12280,"text":"emitted 10 bytes, 57600 samples"}
+{"at_ms":18070,"text":"emitted 10 bytes, 57600 samples"}
+{"at_ms":27105,"text":"emitted 10 bytes, 57600 samples"}
+{"at_ms":27105,"text":"run end state=DONE heard=0 recovered=0 emitted=3 unscanned=0"}
+{"at_ms":27105,"text":"run end cap_blocks=234 cap_samples=239616 peak=10065 mean=1166"}
+{"at_ms":27105,"text":"run end pushed=0 searched=0 unscanned=0 ref_len=9600"}
+{"at_ms":27105,"text":"run end read_ms=4267/24 poll_ms=14273/3072 polls=7"}
+{"at_ms":27105,"text":"run end objects=0 ble_tx=0 ble_rx=0 ble_frag_rej=0"}
+{"at_ms":27105,"text":"run end scan_seen=0 match=0 uuid=0 slices=0 heap=87492/45044"}
+{"at_ms":27153,"text":"wifi up ssid=mcl-auto-node ip=192.168.4.1"}
+{"at_ms":27154,"text":"wifi restored; result available"}
+{"at_ms":27154,"text":"phase REPORT free_heap=27828"}

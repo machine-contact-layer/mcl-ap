@@ -141,8 +141,10 @@ static void analyse(const char *path)
     mcl_ap_modem_default_config(&cfg);
     if (wav_read_pcm16(path, g_pcm, MAX_SAMPLES, &count) != WAV_OK) return;
 
-    ref_len = generate_preamble_iq(&cfg, scratch.ref_i, scratch.ref_q);
-    acquire(&cfg, g_pcm, count, scratch.ref_i, scratch.ref_q, ref_len,
+    /* Through the cache: acquire() reads the reference statistics from the
+       scratch, and those are filled in where the reference is built. */
+    ref_len = preamble_iq_cached(&cfg, &scratch);
+    acquire(&cfg, g_pcm, count, &scratch, scratch.ref_i, scratch.ref_q, ref_len,
             &index, &correlation);
     if (correlation < cfg.detection_threshold) {
         printf("%-46s NOT_ACQUIRED\n", path);

@@ -386,8 +386,10 @@ static int do_decode(cell_t cell, const char *path)
     }
 
     /* ---- the candidate: blind whole-frame rate refinement ---- */
-    ref_len = generate_preamble_iq(&cfg, scratch.ref_i, scratch.ref_q);
-    acquire(&cfg, g_pcm, count, scratch.ref_i, scratch.ref_q, ref_len,
+    /* Through the cache: acquire() reads the reference statistics from the
+       scratch, and those are filled in where the reference is built. */
+    ref_len = preamble_iq_cached(&cfg, &scratch);
+    acquire(&cfg, g_pcm, count, &scratch, scratch.ref_i, scratch.ref_q, ref_len,
             &index, &correlation);
     if (correlation < cfg.detection_threshold) {
         printf("%-34s acquired=0 corr=%.3f  stock=--  refined=--\n",
@@ -472,6 +474,58 @@ static int do_raw(const char *path)
     return (st == MCL_AP_MODEM_OK) ? 0 : 3;
 }
 
+/*
+ * Diagnostic companion to `raw`.  `raw` deliberately emits one stable word
+ * because the conformance-vector gate parses it; changing that output would
+ * turn a laboratory question into an interface break.  This command exposes
+ * the receiver report and the demodulated header/payload prefix after a
+ * failure so timing, length and CRC faults can be separated on retained WAVs.
+ * It still calls the shipped receiver exactly once and does not alter any
+ * decision made by it.
+ */
+static int do_inspect(const char *path)
+{
+    static mcl_ap_modem_scratch_t scratch;
+    uint8_t payload[MCL_AP_MODEM_MAX_PAYLOAD_BYTES];
+    mcl_ap_modem_config_t cfg;
+    mcl_ap_modem_rx_t info;
+    mcl_ap_modem_status_t st;
+    size_t count = 0u;
+    size_t shown, available;
+
+    configure(&cfg, 0);
+    if (wav_read_pcm16(path, g_pcm, MAX_SAMPLES, &count) != WAV_OK) {
+        printf("cannot read %s\n", path);
+        return 2;
+    }
+
+    memset(&info, 0, sizeof(info));
+    memset(payload, 0, sizeof(payload));
+    st = mcl_ap_modem_decode(&cfg, g_pcm, count, &scratch,
+                             payload, sizeof(payload), &info);
+
+    available = sizeof(scratch.demod);
+    shown = (size_t)MCL_AP_MODEM_HEADER_BYTES + info.payload_bytes;
+    if (shown < (size_t)MCL_AP_MODEM_HEADER_BYTES) {
+        shown = (size_t)MCL_AP_MODEM_HEADER_BYTES;
+    }
+    if (shown > available) {
+        shown = available;
+    }
+
+    printf("status=%d acquired=%u index=%u corr=%.6f phase=%ld sps=%.6f "
+           "declared=%u received_crc=%04X computed_crc=%04X crc_valid=%u "
+           "demod=",
+           (int)st, (unsigned)info.acquired, (unsigned)info.acquisition_index,
+           (double)info.correlation, (long)info.timing_phase,
+           (double)info.samples_per_symbol, (unsigned)info.payload_bytes,
+           (unsigned)info.received_crc, (unsigned)info.computed_crc,
+           (unsigned)info.crc_valid);
+    print_hex(scratch.demod, shown);
+    printf("\n");
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     cell_t cell;
@@ -496,6 +550,7 @@ int main(int argc, char **argv)
 
     if (argc >= 2 && strcmp(argv[1], "sizes") == 0) return do_sizes();
     if (argc == 3 && strcmp(argv[1], "raw") == 0) return do_raw(argv[2]);
+    if (argc == 3 && strcmp(argv[1], "inspect") == 0) return do_inspect(argv[2]);
     if (argc == 3 && strcmp(argv[1], "hex") == 0) {
         if (parse_cell(argv[2], &cell) != 0) return 2;
         return do_hex(cell);
@@ -513,6 +568,8 @@ int main(int argc, char **argv)
             "usage: bootstrap_air sizes\n"
             "       bootstrap_air hex    <presence|accept|offer>\n"
             "       bootstrap_air gen    <presence|accept|offer> <out.wav>\n"
-            "       bootstrap_air decode <presence|accept|offer> <in.wav>\n");
+            "       bootstrap_air decode <presence|accept|offer> <in.wav>\n"
+            "       bootstrap_air raw    <in.wav>\n"
+            "       bootstrap_air inspect <in.wav>\n");
     return 2;
 }

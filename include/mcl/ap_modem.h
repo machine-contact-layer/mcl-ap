@@ -150,6 +150,46 @@ typedef struct {
     float ref_i[MCL_AP_MODEM_MAX_PREAMBLE_SAMPLES];
     float ref_q[MCL_AP_MODEM_MAX_PREAMBLE_SAMPLES];
     uint8_t demod[MCL_AP_MODEM_HEADER_BYTES + MCL_AP_MODEM_MAX_PAYLOAD_BYTES];
+
+    /*
+     * THE REFERENCE CACHE. Zero this struct before its first use.
+     *
+     * The quadrature reference above is a pure function of three config
+     * fields, and building it costs 9 600 chirp phases -- a double-precision
+     * divide, a sinf and a cosf each. On a host that is invisible. On a part
+     * with no double-precision FPU it was measured at about 283 ms, which a
+     * one-shot decode pays once per capture and a continuous listener pays on
+     * every poll: the DFR1154 spent 20 s of a 20 s run inside decode, four and
+     * a half times the per-position cost the same chip showed when the same
+     * audio was decoded in a single call.
+     *
+     * So the decoder rebuilds the reference only when one of those fields has
+     * moved. These are cache bookkeeping, never protocol: no decoded result
+     * depends on whether the reference was reused or regenerated, because it
+     * is the same reference either way.
+     *
+     * `cache_magic` guards a scratch that was never initialised. A caller that
+     * hands over uninitialised memory would otherwise risk stale-looking
+     * fields matching by accident and a wrong reference being used, which
+     * would present as a decode that quietly stops acquiring.
+     */
+    uint32_t cache_magic;
+    uint32_t cached_ref_len;
+    float    cached_f_start_hz;
+    float    cached_f_end_hz;
+    float    cached_duration_s;
+    /*
+     * The reference's own statistics, which the acquisition pass needs and
+     * which are a pure function of the reference above. Two sets: the coarse
+     * pass reads the reference at MCL_AP_MODEM_DECIMATION stride, the fine
+     * pass reads all of it, and the mean and energy differ accordingly.
+     */
+    float    cached_coarse_mean_i;
+    float    cached_coarse_mean_q;
+    float    cached_coarse_energy;
+    float    cached_fine_mean_i;
+    float    cached_fine_mean_q;
+    float    cached_fine_energy;
 } mcl_ap_modem_scratch_t;
 
 /* --------------------------------------------------------------- encode */

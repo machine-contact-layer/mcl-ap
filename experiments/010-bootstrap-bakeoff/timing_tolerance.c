@@ -137,9 +137,11 @@ static int survives(const uint8_t *payload, size_t len, float sps_error)
         return -1;
     }
 
-    ref_len = generate_preamble_iq(&config, scratch.ref_i, scratch.ref_q);
-    acquire(&config, g_pcm, written, scratch.ref_i, scratch.ref_q, ref_len,
-            &index, &correlation);
+    /* Through the cache: acquire() reads the reference statistics from the
+       scratch, and those are filled in where the reference is built. */
+    ref_len = preamble_iq_cached(&config, &scratch);
+    acquire(&config, g_pcm, written, &scratch, scratch.ref_i, scratch.ref_q,
+            ref_len, &index, &correlation);
     if (correlation < config.detection_threshold) {
         return -1;
     }

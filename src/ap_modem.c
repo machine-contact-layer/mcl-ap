@@ -114,14 +114,32 @@ void mcl_ap_modem_default_config(mcl_ap_modem_config_t *config)
  * reference that stops matching the transmitted waveform at its own tail --
  * exactly where a correlation peak is decided.
  */
-static float chirp_phase(const mcl_ap_modem_config_t *config, size_t i)
+static double chirp_rate(const mcl_ap_modem_config_t *config)
+{
+    return ((double)config->preamble_f_end_hz
+            - (double)config->preamble_f_start_hz)
+           / (double)config->preamble_duration_s;
+}
+
+/*
+ * `k` is loop-invariant, and on a part without a double-precision FPU the
+ * divide that produces it is a called routine rather than an instruction.
+ * Computing it per sample cost one such call per sample for a value that
+ * cannot change. chirp_phase_at takes it precomputed; chirp_phase keeps the
+ * original signature for callers outside the generation loop, and both
+ * produce the same double arithmetic in the same order as before.
+ */
+static float chirp_phase_at(const mcl_ap_modem_config_t *config, double k,
+                            size_t i)
 {
     double t = (double)i / (double)MCL_AP_MODEM_SAMPLE_RATE_HZ;
-    double k = ((double)config->preamble_f_end_hz
-                - (double)config->preamble_f_start_hz)
-               / (double)config->preamble_duration_s;
     return (float)(2.0 * M_PI
                    * ((double)config->preamble_f_start_hz * t + 0.5 * k * t * t));
+}
+
+static float chirp_phase(const mcl_ap_modem_config_t *config, size_t i)
+{
+    return chirp_phase_at(config, chirp_rate(config), i);
 }
 
 static size_t preamble_length(const mcl_ap_modem_config_t *config)
@@ -136,14 +154,67 @@ static size_t generate_preamble_iq(const mcl_ap_modem_config_t *config,
 {
     size_t n = preamble_length(config);
     size_t i;
+    double k = chirp_rate(config);
 
     for (i = 0u; i < n; ++i) {
-        float phase = chirp_phase(config, i);
+        float phase = chirp_phase_at(config, k, i);
         out_i[i] = sinf(phase);
         if (out_q != NULL) {
             out_q[i] = cosf(phase);
         }
     }
+    return n;
+}
+
+/* See the cache note on mcl_ap_modem_scratch_t. */
+#define MCL_AP_REF_CACHE_MAGIC 0x41505246u   /* "APRF" */
+
+/* Defined with the acquisition pass below; the cache fills its results in
+   at the moment the reference they describe is built. */
+static void reference_stats(const float *ref_i, const float *ref_q,
+                            size_t count, size_t stride,
+                            float *mean_i, float *mean_q, float *energy);
+
+static size_t preamble_iq_cached(const mcl_ap_modem_config_t *config,
+                                 mcl_ap_modem_scratch_t *scratch)
+{
+    size_t n;
+
+    if (scratch->cache_magic == MCL_AP_REF_CACHE_MAGIC &&
+        scratch->cached_ref_len != 0u &&
+        scratch->cached_f_start_hz == config->preamble_f_start_hz &&
+        scratch->cached_f_end_hz == config->preamble_f_end_hz &&
+        scratch->cached_duration_s == config->preamble_duration_s &&
+        (size_t)scratch->cached_ref_len == preamble_length(config)) {
+        return (size_t)scratch->cached_ref_len;
+    }
+
+    n = generate_preamble_iq(config, scratch->ref_i, scratch->ref_q);
+    if (n == 0u) {
+        scratch->cache_magic = 0u;
+        scratch->cached_ref_len = 0u;
+        return 0u;
+    }
+    /*
+     * The statistics belong to the reference that has just been replaced, so
+     * they are recomputed here rather than left to be noticed later. There is
+     * no separate validity flag for them: they are valid exactly when the
+     * reference is, which is the only relationship worth maintaining.
+     */
+    reference_stats(scratch->ref_i, scratch->ref_q,
+                    n / MCL_AP_MODEM_DECIMATION, MCL_AP_MODEM_DECIMATION,
+                    &scratch->cached_coarse_mean_i,
+                    &scratch->cached_coarse_mean_q,
+                    &scratch->cached_coarse_energy);
+    reference_stats(scratch->ref_i, scratch->ref_q, n, 1u,
+                    &scratch->cached_fine_mean_i,
+                    &scratch->cached_fine_mean_q,
+                    &scratch->cached_fine_energy);
+    scratch->cache_magic = MCL_AP_REF_CACHE_MAGIC;
+    scratch->cached_ref_len = (uint32_t)n;
+    scratch->cached_f_start_hz = config->preamble_f_start_hz;
+    scratch->cached_f_end_hz = config->preamble_f_end_hz;
+    scratch->cached_duration_s = config->preamble_duration_s;
     return n;
 }
 
@@ -459,6 +530,7 @@ static void scan(const float *ref_i, const float *ref_q,
  */
 static void acquire(const mcl_ap_modem_config_t *config,
                     const int16_t *pcm, size_t sample_count,
+                    const mcl_ap_modem_scratch_t *scratch,
                     const float *ref_i, const float *ref_q, size_t ref_len,
                     size_t *out_index, float *out_correlation)
 {
@@ -488,8 +560,9 @@ static void acquire(const mcl_ap_modem_config_t *config,
         float coarse_best;
         size_t coarse_index;
 
-        reference_stats(ref_i, ref_q, coarse_count, stride,
-                        &mean_i, &mean_q, &energy);
+        mean_i = scratch->cached_coarse_mean_i;
+        mean_q = scratch->cached_coarse_mean_q;
+        energy = scratch->cached_coarse_energy;
         scan(ref_i, ref_q, mean_i, mean_q, energy,
              pcm, coarse_count, stride, 0u, search,
              &coarse_index, &coarse_best);
@@ -504,7 +577,9 @@ static void acquire(const mcl_ap_modem_config_t *config,
         hi = search;
     }
 
-    reference_stats(ref_i, ref_q, ref_len, 1u, &mean_i, &mean_q, &energy);
+    mean_i = scratch->cached_fine_mean_i;
+    mean_q = scratch->cached_fine_mean_q;
+    energy = scratch->cached_fine_energy;
     scan(ref_i, ref_q, mean_i, mean_q, energy,
          pcm, ref_len, 1u, lo, hi, &best_index, &best);
 
@@ -822,12 +897,13 @@ mcl_ap_modem_status_t mcl_ap_modem_decode(
     }
     memset(info, 0, sizeof(*info));
 
-    ref_len = generate_preamble_iq(config, scratch->ref_i, scratch->ref_q);
+    ref_len = preamble_iq_cached(config, scratch);
     if (ref_len == 0u || ref_len > sample_count) {
         return MCL_AP_MODEM_ERR_INVALID_ARGUMENT;
     }
 
-    acquire(config, pcm, sample_count, scratch->ref_i, scratch->ref_q, ref_len,
+    acquire(config, pcm, sample_count, scratch,
+            scratch->ref_i, scratch->ref_q, ref_len,
             &index, &correlation);
     info->acquisition_index = index;
     info->correlation = correlation;

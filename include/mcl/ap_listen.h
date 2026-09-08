@@ -43,6 +43,40 @@
  *     the longest stretch the application can go without polling, not by how
  *     far back it wants to remember.
  *
+ * WHAT IT COSTS, AND WHICH PARTS CAN AFFORD IT
+ *
+ * Proportional to elapsed audio is the shape of the cost. The constant decides
+ * whether a part can listen continuously at all, so here it is, measured
+ * rather than estimated.
+ *
+ * Acquisition is a coarse correlation at MCL_AP_MODEM_DECIMATION stride over
+ * every new sample position, so with the default 0.2 s chirp the steady-state
+ * work is (9600 / 3) complex multiply-accumulates per sample of audio -- about
+ * 154 million per second of real time at 48 kHz. That is the number to compare
+ * a candidate part against.
+ *
+ * On a DFR1154 (ESP32-S3, 240 MHz, single-precision FPU, no double in
+ * hardware) the MCL autonomous node measured 0.0888 ms per searched sample
+ * position, or about 11 000 samples per second. Real time needs 48 000. So
+ * this part is roughly four times short of continuous listening and cannot do
+ * it, however the application is arranged -- the gap is arithmetic, not
+ * scheduling.
+ *
+ * That is not the end of acoustic bootstrap on such a part. It is the reason
+ * AP-BOOTSTRAP-1 repeats: a receiver that captures a bounded window and then
+ * decodes it, as Experiment 008 does at E4, is deaf while it decodes, and
+ * repetition is what makes a duty-cycled receiver reachable. Choose that
+ * shape when the arithmetic above does not fit; choose continuous listening
+ * when it does.
+ *
+ * Two costs that are NOT proportional to audio were removed in the course of
+ * that measurement, and a caller reusing one scratch across polls gets the
+ * benefit automatically: the quadrature reference and its statistics are pure
+ * functions of the configuration, and are now built once per scratch rather
+ * than once per decode. See the cache note on mcl_ap_modem_scratch_t. Together
+ * they were 4x on this part -- a one-shot decoder never noticed them, because
+ * it pays them once per capture.
+ *
  * There is no anomaly detector here, and there should not be. The preamble
  * correlator IS the detector: it is a matched filter for exactly the thing
  * being looked for, it already runs at 10/10 on real over-air captures in
