@@ -263,3 +263,14 @@ interpolating to 16/17 is the one inference this data forbids. The FEC decision
 is deferred, not closed.
 
 Selects nothing. AP-B0 remains **NOT selected** and MCL-AP remains Experimental.
+
+
+## 2026-09-10 original Row 35 closure
+
+The retained DFR/Android/Windows session E0585224 satisfies the original shared-air
+contention variant: all three transmit and decode AP, competing ACCEPTs preserve
+the first selected session, and DFR/Android validate, admit and migrate. Windows
+counts as an AP contention participant, not a transmitter-diversity reference.
+The owner review treats later forced-collision stress cells as informative;
+negative results are retained. See the core `conformance/independent/20260910-private-rc/`
+receipt and SDK `hardware/dfr1154-autonomous-node/runs/20260909-contention-closure/`.
