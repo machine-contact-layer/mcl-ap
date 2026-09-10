@@ -134,7 +134,9 @@ obligation` is enforced above this layer and nothing here weakens it.
 
 ## Status
 
-Private research repository. Pre-v0.1 candidate specification. Not an adopted standard.
+Public research binding. Not an adopted standard. AP-B0 remains unselected for
+the Stable v1.0 surface; Candidate bootstrap work, retained captures and
+negative experiments remain part of the research record.
 
 **MCL-AP is Experimental and AP-B0 is not selected.** The waveform has now been
 carried by three different loudspeakers — a laptop, an ESP32-S3 and an Android
