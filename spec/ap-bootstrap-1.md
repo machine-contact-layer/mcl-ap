@@ -1,8 +1,8 @@
 # AP-BOOTSTRAP-1
 
 **Status:** **Candidate.** Normatively complete and implementable from this
-document alone. Not Stable: see §11, which states exactly what is missing and
-why the missing thing is a second transmitter rather than more text.
+document alone. Not Stable: see §11, which records the remaining independent
+implementation and public-review boundary rather than more private campaigns.
 
 **Layer:** MCL-AP, transport 1
 **Profile identifier:** not yet assigned. See §10.
@@ -488,6 +488,13 @@ Experimental Use profile 192 is **not** this profile and is not relabelled.
 ## 11. Why this is Candidate and not Stable
 
 One thing is missing, and it is not more text.
+
+**Current release status (2026-09-12):** the retained DFR1154/Android/Windows
+campaign closed the private v1 builder-interoperability floor, including the
+bounded three-party shared-air contention criterion. The historical evidence
+below remains unchanged. This profile is still Candidate because independent
+external implementation/review and a Stable profile identifier remain open
+after publication; no further private campaign is required for v1.
 
 **Every measurement of this waveform comes from one transmitter class.** The
 3000/6000 Hz pair was chosen on the DFR1154's speaker and confirmed on the same
