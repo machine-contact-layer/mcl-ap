@@ -8,11 +8,24 @@
 # The last matching pattern wins, so the specific paths below override the
 # catch-all.
 
+#
+# WHY THESE PATHS NAME TWO OWNERS AND NOT ONE.
+#
+# They named only @0j0bit until 2026-09-12. That deadlocks: GitHub does not let
+# anyone approve their own pull request, and the branch ruleset grants no
+# bypass to administrators, so a pull request touching one of these paths and
+# authored by its sole code owner could never be merged by anyone.
+#
+# Both named accounts have write access, which a code owner must have to count.
+# These lines currently resolve to the same two people as the catch-all, so
+# their present effect is documentary: they record which paths are authorities.
+# If the catch-all ever widens, they narrow again on their own.
+
 * @0j0bit @sed-boi
 
 # The bootstrap profile and its retained physical evidence. Raw evidence is
 # immutable: an edit under /experiments/ that changes a recorded result is a
 # defect, not a correction.
-/spec/          @0j0bit
-/experiments/   @0j0bit
-/conformance/   @0j0bit
+/spec/          @0j0bit @sed-boi
+/experiments/   @0j0bit @sed-boi
+/conformance/   @0j0bit @sed-boi
