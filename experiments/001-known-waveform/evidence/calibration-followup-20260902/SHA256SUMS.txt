@@ -1,15 +1,50 @@
-13cd47dfbe3b0b49bb7f4c202c25bbf4a692895a6ab9ee1e719f500114aee5d7  fixed-source-raw-full-duplex.wav
-1de6fbd473189bb7288b317125ea53883c88d89182091d0ed7a1af8f6cd68922  fixed-source-raw-native-player.wav
-2641086a569f6e6de508580891dce43314c344d35d363e9d2625869f65936d68  fixed-source-raw-native-player-nahimic-off.wav
-8a46ca128bf8c5a98b75f4048db27c25482f35018d8e8f8e45b6043bedb6f39e  fixed-source-raw-native-player-nahimic-off-gain20.wav
-4a97d6e1c416ccc3c57b9b091839aa2e87ff38fad9db4501ef3bfe3e0d7c9a38  fixed-source-raw-operator-boost.wav
-4cd21c432e7a11111a49af5c84e7880b52e5cf646588f48a5a07af2eee37bc81  frequency-response.csv
-e784d67209599e0558d5854e24d5ff10ae771154cf3694495619461788266872  frequency-response-nahimic-off.csv
-672c1acf8c828f970ae5229cd02872d6d1e35c4dbfa59764b68992ec0f15144a  frequency-sweep-capture.wav
-01e7554fc21d007a25d633451694974671b3b9370127918acbc544d2e1e35650  frequency-sweep-capture-nahimic-off.wav
-a7197b40a712d1411f943dfa93b778db0731ba2eb4a6043743ec487b5ff06008  frequency-sweep-source.wav
-503ea7fcac3c4fb149aa2b5b6e4c81e863123b34376c9c93da5b02d3fa45bb7b  full-duplex-decode-summary.csv
-9a486e6143a2b6d57c1e61273efc5029a9b5fdca140a616a0a285cb183730a44  native-player-decode-summary.csv
-fa0174163199ea93e4dfa93a175be8c8bf08c5e978cc323f41bcc618cfc2dac9  native-player-decode-summary-nahimic-off.csv
-c0a24efd28d4e1f13bb94effaece4fec3a336ccfaccf84cb9e84a5a3115f9e2a  native-player-decode-summary-nahimic-off-gain20.csv
-9214e4de0182572fc66a83d6d179c2bd3f8071536e2db254f21d05fed28b6f05  operator-boost-decode-summary.csv
+# CORRECTED 2026-09-12. The digests below are taken over the bytes as
+# committed. The originals are preserved verbatim at the bottom of this
+# file and nothing in this directory was edited to make them agree.
+#
+# WHY THEY DID NOT AGREE. These sums were computed on the capture
+# machine before the files entered Git, while the logs still carried the
+# CRLF framing a board terminal emits. Git stored them LF -- see
+# .gitattributes, which records that the measurement is the text a line
+# carries and not the framing around it -- so the recorded digest
+# described bytes that were never committed. Nothing verified these
+# files, so it went unnoticed from the day they were committed until a
+# pre-publication sweep on 2026-09-12. tools/check-evidence-digests.sh
+# now runs in the gates so it cannot recur.
+#
+# The measurements themselves are untouched. No .wav capture failed:
+# every mismatch was a text log or CSV, which is exactly the signature
+# of a line-ending normalisation rather than a corrupted recording.
+
+13CD47DFBE3B0B49BB7F4C202C25BBF4A692895A6AB9EE1E719F500114AEE5D7  fixed-source-raw-full-duplex.wav
+1DE6FBD473189BB7288B317125EA53883C88D89182091D0ED7A1AF8F6CD68922  fixed-source-raw-native-player.wav
+2641086A569F6E6DE508580891DCE43314C344D35D363E9D2625869F65936D68  fixed-source-raw-native-player-nahimic-off.wav
+8A46CA128BF8C5A98B75F4048DB27C25482F35018D8E8F8E45B6043BEDB6F39E  fixed-source-raw-native-player-nahimic-off-gain20.wav
+4A97D6E1C416CCC3C57B9B091839AA2E87FF38FAD9DB4501EF3BFE3E0D7C9A38  fixed-source-raw-operator-boost.wav
+E1EC08A4804339750263EA3C5DBC752594BA7308EAD421F4BFEFBBC7E9AA3090  frequency-response.csv
+B4CDC80F15507A77172E233C0F91CC5AF548E80F9AF52700F253FDA45B7C939A  frequency-response-nahimic-off.csv
+672C1ACF8C828F970AE5229CD02872D6D1E35C4DBFA59764B68992EC0F15144A  frequency-sweep-capture.wav
+01E7554FC21D007A25D633451694974671B3B9370127918ACBC544D2E1E35650  frequency-sweep-capture-nahimic-off.wav
+A7197B40A712D1411F943DFA93B778DB0731BA2EB4A6043743EC487B5FF06008  frequency-sweep-source.wav
+A0FE8345BD16A7D8AE33AA3DDB325FDC39EF9B5B7C511019BB130BC80F24D444  full-duplex-decode-summary.csv
+28905E2405EF51AA851C08D489D0DEA4D81F69BFEECCC5E1921BF51CD06EB3A7  native-player-decode-summary.csv
+F68FF3FC1BF68A5508FD9C8415E9A4F8853D79A05B522274C8A85B4EEF4B58A8  native-player-decode-summary-nahimic-off.csv
+54D64798B9A162BA1D2140DC9D13E3531FF62553CF3E07B26395DB04720D5BF2  native-player-decode-summary-nahimic-off-gain20.csv
+FAF751706DBF75E0D36979141650B0E2CD3305372958274B483BC3D9554E202D  operator-boost-decode-summary.csv
+
+# ---------------- original digests, as first recorded ----------------
+# 13cd47dfbe3b0b49bb7f4c202c25bbf4a692895a6ab9ee1e719f500114aee5d7  fixed-source-raw-full-duplex.wav
+# 1de6fbd473189bb7288b317125ea53883c88d89182091d0ed7a1af8f6cd68922  fixed-source-raw-native-player.wav
+# 2641086a569f6e6de508580891dce43314c344d35d363e9d2625869f65936d68  fixed-source-raw-native-player-nahimic-off.wav
+# 8a46ca128bf8c5a98b75f4048db27c25482f35018d8e8f8e45b6043bedb6f39e  fixed-source-raw-native-player-nahimic-off-gain20.wav
+# 4a97d6e1c416ccc3c57b9b091839aa2e87ff38fad9db4501ef3bfe3e0d7c9a38  fixed-source-raw-operator-boost.wav
+# 4cd21c432e7a11111a49af5c84e7880b52e5cf646588f48a5a07af2eee37bc81  frequency-response.csv
+# e784d67209599e0558d5854e24d5ff10ae771154cf3694495619461788266872  frequency-response-nahimic-off.csv
+# 672c1acf8c828f970ae5229cd02872d6d1e35c4dbfa59764b68992ec0f15144a  frequency-sweep-capture.wav
+# 01e7554fc21d007a25d633451694974671b3b9370127918acbc544d2e1e35650  frequency-sweep-capture-nahimic-off.wav
+# a7197b40a712d1411f943dfa93b778db0731ba2eb4a6043743ec487b5ff06008  frequency-sweep-source.wav
+# 503ea7fcac3c4fb149aa2b5b6e4c81e863123b34376c9c93da5b02d3fa45bb7b  full-duplex-decode-summary.csv
+# 9a486e6143a2b6d57c1e61273efc5029a9b5fdca140a616a0a285cb183730a44  native-player-decode-summary.csv
+# fa0174163199ea93e4dfa93a175be8c8bf08c5e978cc323f41bcc618cfc2dac9  native-player-decode-summary-nahimic-off.csv
+# c0a24efd28d4e1f13bb94effaece4fec3a336ccfaccf84cb9e84a5a3115f9e2a  native-player-decode-summary-nahimic-off-gain20.csv
+# 9214e4de0182572fc66a83d6d179c2bd3f8071536e2db254f21d05fed28b6f05  operator-boost-decode-summary.csv

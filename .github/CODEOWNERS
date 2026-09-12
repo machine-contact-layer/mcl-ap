@@ -1,0 +1,18 @@
+# Code owners for mcl-ap.
+#
+# Every line here is a REVIEW requirement, not a claim of authorship. It takes
+# effect only once branch protection requires code-owner review, which is
+# applied after the repositories become public -- GitHub Free does not offer
+# protection on a private repository.
+#
+# The last matching pattern wins, so the specific paths below override the
+# catch-all.
+
+* @0j0bit @sed-boi
+
+# The bootstrap profile and its retained physical evidence. Raw evidence is
+# immutable: an edit under /experiments/ that changes a recorded result is a
+# defect, not a correction.
+/spec/          @0j0bit
+/experiments/   @0j0bit
+/conformance/   @0j0bit

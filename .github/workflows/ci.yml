@@ -1,0 +1,53 @@
+# Build and test mcl-ap.
+#
+# CI does not reimplement the gates. It checks out the tree and runs the same
+# CMake build and ctest suite a contributor runs locally, so a green tick here
+# and a green run on a laptop mean the same thing. The heavier
+# multi-toolchain/sanitizer matrix lives in mcl-core's release-gates workflow,
+# not on every pull request.
+#
+# Policy, enforced by tools/check-publication-readiness.sh and
+# tools/go-no-go-audit.sh:
+#
+#   - least-privilege token: contents: read, nothing else
+#   - no pull_request_target, so fork code never runs with our credentials
+#   - no secrets reachable from a pull_request trigger
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    steps:
+      - name: Check out mcl-ap
+        uses: actions/checkout@v4
+        with:
+          path: mcl-ap
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+        run: cmake -S mcl-ap -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
