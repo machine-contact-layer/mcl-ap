@@ -1,6 +1,48 @@
-# MCL-AP
+<p align="center">
+  <img src=".github/banner.png" alt="OJOBIT" width="100%">
+</p>
 
-**MCL-AP** is the Acoustic Profile of the Machine Contact Layer.
+<h1 align="center">MCL-AP</h1>
+
+<p align="center"><strong>First contact through the air, using the speaker and microphone the machine already has.</strong></p>
+
+<p align="center">
+  <a href="https://github.com/machine-contact-layer/mcl-ap/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/machine-contact-layer/mcl-ap/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/machine-contact-layer/mcl-ap/blob/main/LICENSE"><img alt="License Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+  <img alt="profile" src="https://img.shields.io/badge/AP--BOOTSTRAP--1-Candidate-yellow">
+  <img alt="evidence" src="https://img.shields.io/badge/over--air-E4-brightgreen">
+</p>
+
+<p align="center">
+  <a href="https://github.com/machine-contact-layer/mcl-sdk"><b>Use the SDK instead</b></a> ·
+  <a href="https://github.com/machine-contact-layer/mcl-core"><b>Specifications</b></a> ·
+  <a href="https://github.com/machine-contact-layer/mcl-ap/tree/main/experiments"><b>Experiments</b></a>
+</p>
+
+---
+
+> ### Most people should start with the SDK, not here
+>
+> This repository is a **specification**. If you are building a product, you
+> want [**mcl-sdk**](https://github.com/machine-contact-layer/mcl-sdk) — one CMake project, no sibling checkout, and a
+> working example you can run in about a minute. Come back here when you need
+> to know exactly what a byte means, or when you are writing an independent
+> implementation.
+
+## Why this exists
+
+Two machines with no shared network still share the air. MCL-AP is the binding
+that needs no infrastructure at all: no access point, no pairing, no account —
+just a speaker on one side and a microphone on the other, long enough to agree
+on somewhere better to talk.
+
+It is the bootstrap medium for `MCL Stranger-Contact 1`, and it has been run
+over real air on real hardware, including the whole stack decoding on an
+embedded target with no host in the loop.
+
+> **`AP-BOOTSTRAP-1` is a Candidate profile, not Stable.** Promotion needs a
+> second independent transmitter class. Profile identifier 192 stays
+> Experimental Use.
 
 It provides a reference software-defined path for first contact and MCL communication through audio I/O, while allowing OEMs to extend or replace the physical implementation without changing MCL Core semantics or MCL Link behavior.
 
