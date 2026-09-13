@@ -23,11 +23,11 @@
 
 > ### Most people should start with the SDK, not here
 >
-> This repository is a **specification**. If you are building a product, you
-> want [**mcl-sdk**](https://github.com/machine-contact-layer/mcl-sdk) — one CMake project, no sibling checkout, and a
-> working example you can run in about a minute. Come back here when you need
-> to know exactly what a byte means, or when you are writing an independent
-> implementation.
+> This repository is a **specification**. If you are building a product, start
+> with [**mcl-sdk**](https://github.com/machine-contact-layer/mcl-sdk): its quickstart runs two machines making
+> contact, and the release ships a self-contained developer SDK — one CMake
+> project, no sibling checkout. Come back here when you need to know exactly
+> what a byte means, or when you are writing an independent implementation.
 
 ## Why this exists
 
