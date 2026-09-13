@@ -1,3 +1,25 @@
+# CORRECTED 2026-09-12, by the first public CI run.
+#
+# The recorded digest for run.log described the bytes as they sat in a WINDOWS
+# working tree, still carrying the CRLF framing the capture terminal emits.
+# Git stores the file LF, as .gitattributes in this repository requires, so the
+# recorded value described bytes that were never committed.
+#
+# WHY THE DIGEST SWEEP EARLIER THE SAME DAY DID NOT CATCH IT. That sweep ran on
+# Windows and verified against the working tree, where the stale CRLF copy
+# still sat. `text=auto` makes Git compare NORMALISED content, so it reported
+# the tree clean and the digest agreed with itself. The mismatch is visible
+# only where the checkout equals the committed bytes. The first release-gates
+# run on a Linux runner, minutes after these repositories became public,
+# failed it immediately. tools/check-evidence-digests.sh now compares the
+# working tree against the committed blob, so the blind spot cannot recur.
+#
+# The measurement is untouched. The committed bytes have not changed; only the
+# recorded digest, which now describes them.
+#
+# ---------------- original digest, as first recorded ----------------
+# F57FC244D46B73744B338EE8208E96646878991B3F96C12438A1B2BDD60570B9  run.log
+
 605027F5E0830D3F0BBA31F7F2743B2749F632E903626B3BA731929C597D07BD  presence-trial-01.wav
-F57FC244D46B73744B338EE8208E96646878991B3F96C12438A1B2BDD60570B9  run.log
+25250A83E71EC085BE2B331219A9BDD2F24881CE47E439A29290666F12652556  run.log
 1A1115615A9081A64C9F5E479D373C4A7582B6FA9462F5811F09F02D60C8EDC1  source-presence.wav
