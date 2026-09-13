@@ -1,3 +1,25 @@
+# CORRECTED 2026-09-12, by the first public CI run.
+#
+# The recorded digest for run.log described the bytes as they sat in a WINDOWS
+# working tree, still carrying the CRLF framing the capture terminal emits.
+# Git stores the file LF, as .gitattributes in this repository requires, so the
+# recorded value described bytes that were never committed.
+#
+# WHY THE DIGEST SWEEP EARLIER THE SAME DAY DID NOT CATCH IT. That sweep ran on
+# Windows and verified against the working tree, where the stale CRLF copy
+# still sat. `text=auto` makes Git compare NORMALISED content, so it reported
+# the tree clean and the digest agreed with itself. The mismatch is visible
+# only where the checkout equals the committed bytes. The first release-gates
+# run on a Linux runner, minutes after these repositories became public,
+# failed it immediately. tools/check-evidence-digests.sh now compares the
+# working tree against the committed blob, so the blind spot cannot recur.
+#
+# The measurement is untouched. The committed bytes have not changed; only the
+# recorded digest, which now describes them.
+#
+# ---------------- original digest, as first recorded ----------------
+# DABF623D9A87B59A54913D757D773FD74314EE187E0D3A596A94BBA5BB373E30  run.log
+
 63332D1F6D5304C53D4F339DDB870620B2FC21B2A9E038E7FABAAEFC4E3F524C  offer-trial-01.wav
-DABF623D9A87B59A54913D757D773FD74314EE187E0D3A596A94BBA5BB373E30  run.log
+DAA0136969BBACC1C2EA99854C120B485401D37054A9D7F2B5DD7400FC2614DD  run.log
 72C010D556FA5CB4448A011761586868968A89A1A8B3AB489897E6F68519A033  source-offer.wav
